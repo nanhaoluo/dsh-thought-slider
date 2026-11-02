@@ -1,26 +1,66 @@
 # dsh-thought-slider
 
-独立的 DeepSeek Harness 视觉与交互改善插件：将模型选择面板底部的思考等级滑块升级为 **ZCode / Codex 官方风格**。
+DeepSeek Harness 思考强度滑块的独立视觉增强插件，提供 ZCode / Codex 风格的胶囊轨道、白色旋钮和最高档粒子效果。
 
-## 视觉与交互改善
+## 使用前提
 
-1. **ZCode / Codex 胶囊跑道**：
-   - 采用 20px 饱满圆润胶囊轨道，替代原本的细线样式；
-   - 跑道左右自适应留出 12px 安全边距，视觉呼吸感舒适自然；
-   - 轨道填充采用 Emerald 翠绿到 Cyan 青色再到 Electric Blue 蓝紫色的平滑动态渐变；
-   - 提取并复刻 Codex 官方 12 粒子物理动效配置，**仅在拉到最满（Max / 最高）档位时激活炫酷微光流动气泡粒子动效**，在其他档位保持纯净渐变。
-2. **纯白实体悬浮旋钮**：
-   - 旋钮层级置于最顶层，为纯白圆形高亮实体旋钮，带细腻悬浮立体投影；
-   - 无论滑块停留在最左端（0%）还是最右端（100%），**旋钮正圆几何边缘均完整展示，绝不被跑道或容器外沿裁切**。
-3. **标题与档位精细对齐**：
-   - 标题文案采用“**思考强度**”；
-   - 档位名称**完全遵循模型配置自身的档位名称与定义执行**，不进行二次强制篡改；
-   - 右侧集成 `Ctrl+T` 快捷键胶囊微徽标。
-4. **面板空间与防截断保护**：
-   - 将面板最大高度扩展为 520px，消除底部文字半截被裁切的现象；
-   - 隐藏不必要的底部冗余文字刻度行，保持界面清爽精致；
-   - 优化左侧供应商列宽为 128px，确保供应商全名完整展示。
+本插件增强 [dsh-better-reasoning-effort](https://github.com/HaoyueQin/dsh-better-reasoning-effort) 提供的滑块，**不会独立创建滑块或增加模型的思考档位**。需要在同一个 DSH Web profile 中安装并启用该插件的滑块功能，且当前模型至少配置两个思考档位。
 
-## 零侵入设计
+兼容的 DOM 结构：
 
-本插件通过标准的独立插件接口挂载（`dsh.profile.bundles`），**完全不修改任何第三方已发布的 npm 插件源码**，独立生效，安全可卸载。
+- 当前 `dsh-better-reasoning-effort` 0.5.4：`.bre-effort-track`、`.bre-effort-knob`、`.bre-effort-input`，从宿主的 `--bre-progress` 读取预览进度。
+- 旧结构：`.bre-effort-slider-fill`、`.bre-effort-slider-thumb`，从宿主旋钮的百分比位置读取进度。
+
+上游若改变这些结构，需要重新核对兼容性。遇到未知结构或无有效进度时，插件保留宿主原样。
+
+## 本地安装
+
+在本项目目录运行：
+
+```sh
+npm run build
+# 尚未安装滑块提供方时执行：
+dsh plugin --profile web add dsh-better-reasoning-effort
+# 将本地修复版安装到同一个 profile：
+dsh plugin --profile web add .
+```
+
+安装完成后重启该 DSH profile 并刷新 Web 页面。其他 profile 请替换命令中的 `web`。插件的安装和重启边界见 [DSH CLI 官方说明](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/cli/reference/README.md)。
+
+移除本增强插件：
+
+```sh
+dsh plugin --profile web remove dsh-thought-slider
+```
+
+## 视觉与交互
+
+- 20px 胶囊轨道、两侧 12px 间距、24px 白色旋钮；旋钮在两端保持完整。
+- 翠绿到青色、蓝紫色的档位渐变；填充和旋钮使用同一进度，与宿主点击坐标保持一致。
+- 仅在最高档运行 12 个气泡粒子；其他档位暂停，遵循系统“减少动态效果”设置。
+- 保留模型配置的档位名称、原有拖动、键盘操作、禁用状态及提交/回滚逻辑。有旧版中文标题时，将“思考等级”显示为“思考强度”。
+- 保留模型选择入口，面板高度随视口限制并可滚动；不再以通用 CSS 隐藏菜单项。
+
+## 修复内容
+
+- 支持当前宿主的实际 DOM，解决旋钮/填充选择器失配导致增强不生效。
+- 不再把宿主的百分比位置改写成 `calc()`，避免再次扫描时误判为 50%，以及视觉位置偏离拖动坐标。
+- 监听样式、ARIA、输入事件和动态节点变化，按动画帧合并更新，避免拖动时样式滞后及观察器自触发循环。
+- 气泡横向容器使用有效的 `left` / `right` 定位，覆盖整条填充轨道。
+- 卸载时取消待执行扫描、移除粒子与样式，恢复标题和插件自己的属性，同时保留宿主更新后的档位。
+
+本插件通过 `dsh.profile.bundles` 挂载，不修改第三方 npm 插件源码。增强层只负责显示，不发送模型选择请求，也不额外注册快捷键。
+
+## 开发与验证
+
+```sh
+npm ci
+npx playwright install chromium
+npm run build
+npm test
+npm pack
+```
+
+macOS 已安装 Google Chrome 时，浏览器测试会直接使用它；其他环境默认使用 Playwright Chromium，也可通过 `PLAYWRIGHT_CHANNEL` 选择浏览器通道。`npm run test:unit` 只运行无需浏览器的构建和生命周期检查；`npm run test:browser` 运行交互回归测试。
+
+浏览器测试使用按上游 0.5.4 DOM 和交互约定建立的宿主模拟页面，覆盖拖动、键盘、进度更新、菜单重建、窄屏浅色/深色、减少动态效果、卸载和重新安装。这些测试不连接真实 DSH 后端，不代替实际 profile 的模型请求验证。打包前会自动重建 `lib/client.js`。

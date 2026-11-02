@@ -12,9 +12,12 @@ test('engine source has valid syntax and defines required styles', async () => {
   assert.ok(engineSource.includes('.bre-effort-slider'));
   assert.ok(engineSource.includes('.bre-effort-slider-fill'));
   assert.ok(engineSource.includes('.bre-effort-slider-thumb'));
+  assert.ok(engineSource.includes('.bre-effort-track'));
+  assert.ok(engineSource.includes('.bre-effort-knob'));
+  assert.ok(engineSource.includes('--bre-progress'));
   assert.ok(engineSource.includes('zcode-thought-bubble-flow'));
   assert.ok(engineSource.includes('zcode-thought-bubbles'));
-  assert.ok(engineSource.includes('Ctrl+T'));
+  assert.ok(engineSource.includes('data-dsh-thought-slider'));
 });
 
 test('lib/client.js is buildable and contains module loader hook', async () => {
