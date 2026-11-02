@@ -1,0 +1,4 @@
+# dsh-thought-slider: Mounts the ZCode / Codex thought slider enhancement layer into dsh host composition.
+- insert:
+    - id: dsh-thought-slider
+      name: dsh-thought-slider
