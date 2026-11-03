@@ -181,6 +181,18 @@ test('MTL holding a track press waits at the landing and a later click cancels b
  expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e4']);
 });
 
+test('MTL a delayed first render cannot skip the click landing',async({page})=>{
+ await page.locator('.bre-effort-slider').evaluate(s=>{
+  const b=s.getBoundingClientRect(),p=s.querySelector('.zcode-thought-pointer');
+  for(const type of ['pointerdown','pointerup'])p.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:73,isPrimary:true,button:0,buttons:type==='pointerup'?0:1,clientX:b.x+12+(b.width-24)*.62,clientY:b.y+12}));
+  const end=performance.now()+300;while(performance.now()<end){}
+ });
+ const values=await page.locator('.bre-effort-slider').evaluate(async s=>{const values=[];for(let i=0;i<36;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();values.push((k.x+k.width/2-b.x-12)/(b.width-24))}return values});
+ expect(Math.max(...values)).toBeGreaterThan(.61);
+ expect(values.at(-1)).toBeCloseTo(.5,3);
+ expect(await page.evaluate(()=>calls.length)).toBe(0);
+});
+
 test('MTL one shared position keeps the mask on the knob through slow frames',async({page,context})=>{
  const session=await context.newCDPSession(page);await session.send('Emulation.setCPUThrottlingRate',{rate:4});
  try{
