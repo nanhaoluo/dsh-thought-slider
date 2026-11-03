@@ -265,15 +265,26 @@ test('ticks join the leftward particles at maximum and return linearly from the 
   const restored = await page.locator('#legacy').evaluate(async s => {
     await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
     const tick = [...s.querySelectorAll('.bre-effort-slider-tick')].find(n => n.style.left === '25%');
+    const returning = [...s.querySelectorAll('.bre-effort-slider-tick')].filter(n => parseFloat(n.style.left) > 0);
+    const wave = returning.map(n => {
+      const animations = n.getAnimations();
+      animations.forEach(a => { a.pause(); a.currentTime = 100; });
+      return { position: parseFloat(n.style.left), alpha: Number(getComputedStyle(n).opacity), delay: animations[0].effect.getTiming().delay, duration: animations[0].effect.getTiming().duration };
+    }).sort((a,b) => a.position-b.position);
     const transitions = tick.getAnimations(); transitions.forEach(a => a.pause());
     const samples = [.25, .75, 1].map(phase => {
-      transitions.forEach(a => { a.currentTime = a.effect.getTiming().duration * phase; });
+      transitions.forEach(a => { const timing=a.effect.getTiming();a.currentTime = timing.delay + timing.duration * phase; });
       const css = getComputedStyle(tick);
       return { alpha: Number(css.opacity), shift: new DOMMatrixReadOnly(css.transform).m41 };
     });
-    return { samples, curves: transitions.map(a => a.effect.getTiming().easing), leftHidden: getComputedStyle(s.querySelector('[style*="left: 0%"]')).display === 'none' };
+    return { samples, wave, curves: transitions.map(a => a.effect.getTiming().easing), leftHidden: getComputedStyle(s.querySelector('[style*="left: 0%"]')).display === 'none' };
   });
   expect(restored.leftHidden).toBe(true); expect(restored.curves).toEqual(['linear', 'linear']);
+  expect(restored.wave.map(t=>t.delay)).toEqual([35,70,105,140]);
+  expect(restored.wave.every(t=>t.duration===180)).toBe(true);
+  expect(restored.wave[0].alpha).toBeGreaterThan(restored.wave[1].alpha);
+  expect(restored.wave[1].alpha).toBeGreaterThan(0);
+  expect(restored.wave.slice(2).every(t=>t.alpha===0)).toBe(true);
   for (let i = 0; i < 3; i++) {
     expect(restored.samples[i].alpha).toBeCloseTo([.225, .675, .9][i], 2);
     expect(restored.samples[i].shift).toBeCloseTo([9, 3, 0][i], 1);

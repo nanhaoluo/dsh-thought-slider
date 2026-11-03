@@ -142,20 +142,67 @@ test('MTL grabbing the edge of a thumb preserves its initial position',async({pa
  expect(await page.evaluate(()=>calls.length)).toBe(0);
 });
 
-test('MTL click paints immediately and retains the chosen stop through a slow commit',async({page})=>{
+test('MTL click visits its raw landing before retaining the chosen stop through a slow commit',async({page})=>{
  await page.evaluate(()=>{delay=300});
  const r=await travelBox(page.locator('.bre-effort-slider'));
  await page.mouse.move(r.x+r.width*.74,r.y+r.height/2);await page.mouse.down();
- await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress','75%');
+ expect(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(s.style.getPropertyValue('--dsh-thought-progress')))).toBeCloseTo(74,3);
  await expect(page.locator('.bre-effort-slider-head-value')).toHaveText('Level 3');
  await page.mouse.up();
- const values=await page.evaluate(async()=>{const values=[];for(let i=0;i<8;i++){await new Promise(requestAnimationFrame);values.push(parseFloat(document.querySelector('.bre-effort-slider').style.getPropertyValue('--dsh-thought-progress')))}return values});
- expect(values.every(v=>v===75)).toBe(true);
+ const values=await page.evaluate(async()=>{const values=[];for(let i=0;i<24;i++){await new Promise(requestAnimationFrame);values.push(parseFloat(document.querySelector('.bre-effort-slider').style.getPropertyValue('--dsh-thought-progress')))}return values});
+ expect(values.every(v=>v>=73.99&&v<=75.01)).toBe(true);
+ expect(values.at(-1)).toBe(75);
  await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');
  expect(await page.evaluate(()=>calls.length)).toBe(1);
 });
 
 async function clickRatio(page,ratio){const b=await travelBox(page.locator('.bre-effort-slider'));await page.mouse.click(b.x+b.width*ratio,b.y+b.height/2)}
+
+for(const landing of [.38,.62])test(`MTL click reaches ${landing} before reversing to the nearest stop`,async({page})=>{
+ await clickRatio(page,landing);
+ const values=await page.locator('.bre-effort-slider').evaluate(async s=>{const result=[];for(let i=0;i<36;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();result.push((k.x+k.width/2-b.x-12)/(b.width-24))}return result});
+ const extreme=landing>.5?Math.max(...values):Math.min(...values);
+ expect(extreme).toBeCloseTo(landing,2);
+ expect(values.at(-1)).toBeCloseTo(.5,3);
+ expect(values.indexOf(extreme)).toBeLessThan(values.length-8);
+ expect(await page.evaluate(()=>calls.length)).toBe(0);
+});
+
+test('MTL holding a track press waits at the landing and a later click cancels both earlier phases',async({page})=>{
+ const b=await travelBox(page.locator('.bre-effort-slider'));
+ await page.mouse.move(b.x+b.width*.62,b.y+b.height/2);await page.mouse.down();
+ await page.waitForTimeout(220);
+ const landing=await page.locator('.bre-effort-slider').evaluate(s=>{const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();return (k.x+k.width/2-b.x-12)/(b.width-24)});
+ expect(landing).toBeCloseTo(.62,3);expect(await page.evaluate(()=>calls.length)).toBe(0);
+ await page.mouse.up();await clickRatio(page,.88);
+ await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress','100%');
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('data-dsh-thought-settling','false');
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','4');
+ expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e4']);
+});
+
+test('MTL one shared position keeps the mask on the knob through slow frames',async({page,context})=>{
+ const session=await context.newCDPSession(page);await session.send('Emulation.setCPUThrottlingRate',{rate:4});
+ try{
+  await clickRatio(page,1);
+  const result=await page.locator('.bre-effort-slider').evaluate(async s=>{
+   const fill=s.querySelector('.zcode-thought-fill'),knob=s.querySelector('.bre-effort-slider-thumb'),probe=document.createElement('span');
+   probe.style.cssText='position:absolute;height:0;border:0;padding:0';fill.appendChild(probe);
+   const rootMotion=s.getAnimations().some(a=>a.transitionProperty==='--dsh-thought-position');
+   const childMotion=[...fill.getAnimations(),...knob.getAnimations()].some(a=>a.transitionProperty==='left'||a.transitionProperty==='clip-path');
+   const errors=[];
+   for(let i=0;i<24;i++){
+    await new Promise(requestAnimationFrame);
+    if(i===2||i===5){const until=performance.now()+35;while(performance.now()<until){}}
+    const f=fill.getBoundingClientRect(),k=knob.getBoundingClientRect();probe.style.width=getComputedStyle(fill).clipPath.match(/^inset\(0px (.+) 0px 0px\)$/)?.[1]||'0px';
+    errors.push(Math.abs(f.right-probe.getBoundingClientRect().width-(k.x+k.width/2)));
+   }
+   probe.remove();return {rootMotion,childMotion,errors};
+  });
+  expect(result.rootMotion).toBe(true);expect(result.childMotion).toBe(false);
+  expect(Math.max(...result.errors)).toBeLessThan(.15);
+ }finally{await session.send('Emulation.setCPUThrottlingRate',{rate:1})}
+});
 
 test('MTL rapid busy clicks keep the latest intent and submit it after unlocking',async({page})=>{
  await page.evaluate(()=>{delay=500});
