@@ -8,11 +8,13 @@
   'use strict';
   if (!root) return;
   if (root.__DSH_THOUGHT_SLIDER__) {
-    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.8') return;
+    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.9') return;
     root.__DSH_THOUGHT_SLIDER__.uninstall();
   }
 
   var BUBBLE_COUNT = 20;
+  // Damped spring response (damping ratio .8): a single, subtle 1.5% overshoot.
+  var SETTLE_EASING = 'linear(0, 0.038308, 0.130241, 0.248833, 0.375507, 0.498197, 0.609716, 0.706411, 0.787073, 0.852091, 0.902817, 0.9411, 0.968968, 0.988414, 1.001268, 1.009132, 1.013351, 1.015014, 1.014978, 1.013893, 1.012236, 1.010342, 1.008437, 1.00666, 1.005087, 1.003753, 1.002662, 1.001797, 1.001135, 1.000645, 1.000295, 1.000058, 1)';
   function randomBetween(low, high) { return low + Math.random() * (high - low); }
 
   var SLIDER_CSS = `
@@ -153,9 +155,9 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   transition: none !important;
   animation: none !important;
 }
-.bre-effort-slider[data-dsh-thought-settling="true"] :is(.bre-effort-slider-thumb, .bre-effort-knob) { transition: left 180ms cubic-bezier(.22,.7,.22,1) !important; }
-.bre-effort-slider[data-dsh-thought-settling="true"] .zcode-thought-fill { transition: width 180ms cubic-bezier(.22,.7,.22,1) !important; }
-.bre-effort-slider[data-dsh-thought-settling="true"] { transition: --dsh-thought-start-hue 180ms cubic-bezier(.22,.7,.22,1), --dsh-thought-end-hue 180ms cubic-bezier(.22,.7,.22,1) !important; }
+.bre-effort-slider[data-dsh-thought-settling="true"] :is(.bre-effort-slider-thumb, .bre-effort-knob) { transition: left var(--dsh-thought-settle-duration, 320ms) ${SETTLE_EASING} !important; }
+.bre-effort-slider[data-dsh-thought-settling="true"] .zcode-thought-fill { transition: width var(--dsh-thought-settle-duration, 320ms) ${SETTLE_EASING} !important; }
+.bre-effort-slider[data-dsh-thought-settling="true"] { transition: --dsh-thought-start-hue var(--dsh-thought-settle-duration, 320ms) cubic-bezier(.25,.1,.25,1), --dsh-thought-end-hue var(--dsh-thought-settle-duration, 320ms) cubic-bezier(.25,.1,.25,1) !important; }
 .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::before,
 .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::after {
   display: none !important;
@@ -538,10 +540,14 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
       snapTimer = null; snapTarget = null;
       setAttribute(slider, 'data-dsh-thought-settling', 'false');
     }
-    function settle(target) {
+    function settle(target, from) {
       stopSnap(); snapTarget = target;
+      var distance = Math.abs(target - from) * drag.bounds.width;
+      var duration = Math.round(Math.min(400, 240 + distance * .5));
+      setStyle(slider, state, '--dsh-thought-settle-duration', duration + 'ms');
       setAttribute(slider, 'data-dsh-thought-settling', 'true');
-      snapTimer = root.setTimeout(stopSnap, 180);
+      // Allow the last compositor frames to settle before disabling transitions.
+      snapTimer = root.setTimeout(stopSnap, duration + 34);
     }
     function stopLive() { if (liveTimer !== null) root.clearTimeout(liveTimer); liveTimer = null; }
     function stopPending(restoreHeader) {
@@ -649,7 +655,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
       }
       try { surface.setPointerCapture(event.pointerId); } catch (_) { /* Window listeners cover unavailable capture. */ }
       drag.index = stopIndex(event);
-      if (!grabbed) settle(drag.index / count);
+      if (!grabbed) settle(drag.index / count, current);
       preview(grabbed ? current : drag.index / count, drag.index);
       if (!legacy) forward('pointerdown', drag.index / count, event);
     }
@@ -678,8 +684,8 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
       if (!drag) return;
       event.preventDefault(); event.stopPropagation(); stopLive();
       var target = drag.index / drag.count;
-      if (drag.moved && Math.abs(api.progress - target) > 1e-6) {
-        settle(target);
+      if (Math.abs(api.progress - target) > 1e-6) {
+        settle(target, api.progress);
       }
       preview(target, drag.index);
       submit(event);
@@ -956,7 +962,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   }
 
   root.__DSH_THOUGHT_SLIDER__ = {
-    version: '1.0.8', install: install, uninstall: uninstall,
+    version: '1.0.9', install: install, uninstall: uninstall,
     scanAndHarmonize: scanAndHarmonize, CSS: SLIDER_CSS
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

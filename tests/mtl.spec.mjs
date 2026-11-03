@@ -214,16 +214,41 @@ test('MTL synchronizes while held and serializes the latest reversed stop',async
  expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e4','e0']);
 });
 
-test('MTL click and release animate toward a stop while dragging stays direct',async({page})=>{
+test('MTL click and release have a small damped rebound while dragging stays direct',async({page})=>{
  const s=page.locator('.bre-effort-slider');
  await clickRatio(page,1);
- const positions=await s.evaluate(async s=>{const a=[];for(let i=0;i<16;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x)/b.width)}return a});
+ const positions=await s.evaluate(async s=>{const a=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x)/b.width)}return a});
  expect(positions[0]).toBeLessThan(.98);expect(positions[0]).toBeGreaterThanOrEqual(.5);
  expect(positions.at(-1)).toBeCloseTo(1,3);
- expect(positions.every((v,i)=>!i||v>=positions[i-1]-.001)).toBe(true);
+ expect(Math.max(...positions)).toBeGreaterThan(1.002);expect(Math.max(...positions)).toBeLessThan(1.015);
+ expect(positions.indexOf(Math.max(...positions))).toBeLessThan(positions.length-3);
  await drag(page,.25,.6);await page.mouse.up();
- const snapped=await s.evaluate(async s=>{const a=[];for(let i=0;i<16;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x)/b.width)}return a});
+ const snapped=await s.evaluate(async s=>{const a=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x)/b.width)}return a});
  expect(snapped[0]).toBeLessThan(.745);expect(snapped.at(-1)).toBeCloseTo(.75,3);
+ expect(Math.max(...snapped)).toBeGreaterThan(.7505);expect(Math.max(...snapped)).toBeLessThan(.757);
+});
+
+test('MTL leftward clicks rebound gently and settle at the exact lower stop',async({page})=>{
+ await clickRatio(page,0);
+ const positions=await page.locator('.bre-effort-slider').evaluate(async s=>{const a=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x)/b.width)}return a});
+ expect(Math.min(...positions)).toBeLessThan(-.002);expect(Math.min(...positions)).toBeGreaterThan(-.015);
+ expect(positions.at(-1)).toBeCloseTo(0,3);
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','0');
+ expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e0']);
+});
+
+test('MTL taking over a moving thumb interrupts the spring and immediately follows the pointer',async({page})=>{
+ await clickRatio(page,1);
+ const d=await page.locator('.bre-effort-slider').evaluate(async s=>{
+  await new Promise(r=>setTimeout(r,50));
+  const p=s.querySelector('.zcode-thought-pointer'),k=s.querySelector('.bre-effort-slider-thumb');
+  const center=()=>{const r=k.getBoundingClientRect();return r.x+r.width/2},before=center(),y=s.getBoundingClientRect().y+12;
+  const fire=(type,x)=>p.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:55,isPrimary:true,button:0,buttons:1,clientX:x,clientY:y}));
+  fire('pointerdown',before);const afterDown=center();fire('pointermove',before+10);const afterMove=center();
+  const settling=s.getAttribute('data-dsh-thought-settling');fire('pointercancel',before+10);
+  return {downDelta:afterDown-before,moveDelta:afterMove-before,settling};
+ });
+ expect(d.downDelta).toBeCloseTo(0,1);expect(d.moveDelta).toBeCloseTo(10,1);expect(d.settling).toBe('false');
 });
 
 test('MTL twelve rapid reversals all paint their intent and persist the last one',async({page})=>{
@@ -262,7 +287,7 @@ test('MTL track colors change continuously inside a single intent level',async({
 
 test('MTL click interpolates track hues together with the thumb',async({page})=>{
  await clickRatio(page,1);
- const hues=await page.locator('.bre-effort-slider').evaluate(async s=>{const a=[];for(let i=0;i<16;i++){await new Promise(requestAnimationFrame);a.push(parseFloat(getComputedStyle(s).getPropertyValue('--dsh-thought-start-hue')))}return a});
+ const hues=await page.locator('.bre-effort-slider').evaluate(async s=>{const a=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);a.push(parseFloat(getComputedStyle(s).getPropertyValue('--dsh-thought-start-hue')))}return a});
  expect(hues[0]).toBeGreaterThanOrEqual(206);expect(hues[0]).toBeLessThan(218);
  expect(new Set(hues).size).toBeGreaterThan(3);expect(hues.at(-1)).toBeCloseTo(218,3);
 });
