@@ -61,6 +61,22 @@ test('MTL end stops align with both round cap centers and ticks use the same ins
   expect(Math.abs(d.center-d.expected)).toBeLessThan(.1);
  }
 });
+test('MTL ticks mounted by async host previews join the flow once without restarting existing particles',async({page})=>{
+ await page.evaluate(()=>{delay=500});
+ await clickRatio(page,1);
+ await page.locator('.zcode-thought-ticks').evaluate(layer=>{for(const n of layer.shadowRoot.querySelectorAll('.zcode-thought-tick-particle'))n.getAnimations().forEach(a=>a.pause())});
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','4');
+ const result=await page.locator('.bre-effort-slider').evaluate(s=>{
+  const layer=s.querySelector('.zcode-thought-ticks').shadowRoot;
+  const nodes=[...layer.querySelectorAll('.zcode-thought-tick-particle')],before=nodes.length;
+  const starts=nodes.map(n=>n.getAnimations()[0].effect.getKeyframes()[0].transform);
+  for(let i=0;i<4;i++)window.__DSH_THOUGHT_SLIDER__.scanAndHarmonize();
+  return {before,after:layer.querySelectorAll('.zcode-thought-tick-particle').length,retained:nodes.every(n=>n.isConnected),starts};
+ });
+ // The middle tick was absent while selected, then arrived with the host preview.
+ expect(result.before).toBe(3);expect(result.after).toBe(3);expect(result.retained).toBe(true);
+ expect(new Set(result.starts).size).toBe(3);
+});
 test('MTL preview paints synchronously without host React work per move',async({page})=>{
  const box=await drag(page,.25,.38);
  const d=await page.evaluate(box=>{const s=document.querySelector('.bre-effort-slider'),p=s.querySelector('.zcode-thought-pointer');let scans=0;const original=document.querySelectorAll;document.querySelectorAll=function(...args){scans++;return original.apply(this,args)};
