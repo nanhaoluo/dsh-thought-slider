@@ -16,6 +16,8 @@
   function randomBetween(low, high) { return low + Math.random() * (high - low); }
 
   var SLIDER_CSS = `
+@property --dsh-thought-start-hue { syntax: '<number>'; inherits: true; initial-value: 194; }
+@property --dsh-thought-end-hue { syntax: '<number>'; inherits: true; initial-value: 210; }
 /* Foreign menu restorers must not re-show the host's duplicate cells over MTL. */
 .codexModelSelectMenu:has(.bre-menu-slider > .bre-effort-slider[data-dsh-thought-slider]) > button[role="menuitem"],
 .codexModelSelectMenu:has(.bre-menu-slider > .bre-effort-slider[data-dsh-thought-slider]) > .codexModelSelectCell {
@@ -92,6 +94,7 @@
   background: #3c3e42 !important;
   box-shadow: inset 0 0 2px rgba(0, 0, 0, .18) !important;
   overflow: visible !important;
+  transition: none !important;
 }
 body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   background: #f3f3f3 !important;
@@ -115,10 +118,11 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   height: 100%;
   border-radius: 999px 0 0 999px;
   corner-shape: round !important;
-  background: var(--dsh-thought-gradient);
+  background: linear-gradient(100deg, hsl(var(--dsh-thought-start-hue), 86%, 51%), hsl(var(--dsh-thought-end-hue), 88%, 61%));
   overflow: hidden;
   pointer-events: none;
   z-index: 1;
+  transition: none !important;
 }
 .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob) {
   position: absolute !important;
@@ -150,7 +154,8 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   animation: none !important;
 }
 .bre-effort-slider[data-dsh-thought-settling="true"] :is(.bre-effort-slider-thumb, .bre-effort-knob) { transition: left 180ms cubic-bezier(.22,.7,.22,1) !important; }
-.bre-effort-slider[data-dsh-thought-settling="true"] .zcode-thought-fill { transition: width 180ms cubic-bezier(.22,.7,.22,1); }
+.bre-effort-slider[data-dsh-thought-settling="true"] .zcode-thought-fill { transition: width 180ms cubic-bezier(.22,.7,.22,1) !important; }
+.bre-effort-slider[data-dsh-thought-settling="true"] { transition: --dsh-thought-start-hue 180ms cubic-bezier(.22,.7,.22,1), --dsh-thought-end-hue 180ms cubic-bezier(.22,.7,.22,1) !important; }
 .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::before,
 .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::after {
   display: none !important;
@@ -212,9 +217,14 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   corner-shape: round !important;
   pointer-events: none;
   opacity: 0;
+  transform: scale(1.045);
+  filter: blur(3px);
+  transition: opacity 420ms ease, transform 550ms cubic-bezier(.22,.7,.22,1), filter 500ms ease;
 }
 .bre-effort-slider[data-dsh-thought-max="true"] .zcode-thought-bubbles {
   opacity: 1;
+  transform: scale(1);
+  filter: blur(0);
 }
 .bre-effort-slider[data-dsh-thought-slider] .zcode-thought-bubble {
   position: absolute;
@@ -267,6 +277,8 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   77% { opacity: calc(var(--particle-alpha) * .3); }
 }
 @media (prefers-reduced-motion: reduce) {
+  .bre-effort-slider[data-dsh-thought-slider],
+  .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob, .zcode-thought-fill, .zcode-thought-bubbles) { transition: none !important; }
   .bre-effort-slider[data-dsh-thought-slider] .zcode-thought-bubble {
     animation: none !important;
   }
@@ -291,12 +303,6 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     attributeFilter: ['style', 'class', 'aria-valuenow', 'aria-valuemin',
       'aria-valuemax', 'aria-valuetext', 'aria-disabled', 'data-bre-dragging', 'min', 'max', 'step', 'disabled', 'value']
   };
-
-  function gradientForProgress(progress) {
-    var start = 194 + progress * 24;
-    var end = 210 + progress * 34;
-    return 'linear-gradient(100deg, hsl(' + start + ', 86%, 51%), hsl(' + end + ', 88%, 61%))';
-  }
 
   function percentage(value) {
     var match = /^(-?(?:\d+(?:\.\d*)?|\.\d+))%$/.exec((value || '').trim());
@@ -352,32 +358,46 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     var media = root.matchMedia ? root.matchMedia('(prefers-reduced-motion: reduce)') : null;
     var activeGlow = false, disposed = false;
     var animations = [];
-    function point(previous, index, reverse) {
-      var direction = previous ? (reverse ? -previous.direction : (Math.random() < .5 ? -1 : 1)) : (Math.random() < .5 ? -1 : 1);
-      var x = previous ? previous.x + direction * randomBetween(17, 29) : [-46, 0, 46][index] + randomBetween(-5, 5);
-      if (x < -65 || x > 65) { direction *= -1; x = previous.x + direction * randomBetween(17, 29); }
-      var y = previous ? Math.max(-24, Math.min(24, previous.y + randomBetween(-12, 12))) : randomBetween(-12, 12);
-      return { x: x, y: y, direction: direction, frame: {
-        transform: 'translate(' + x + '%, ' + y + '%) scale(' + randomBetween(.94, 1.14) + ', ' + randomBetween(.9, 1.18) + ') rotate(' + randomBetween(-12, 12) + 'deg)',
-        opacity: randomBetween(.52, .82), easing: 'ease-in-out'
-      } };
+    function sync() {
+      animations.forEach(function (pair) { pair.forEach(function (animation) {
+        if (activeGlow && !(media && media.matches)) animation.play(); else animation.pause();
+      }); });
     }
-    function sync() { animations.forEach(function (animation) { if (activeGlow && !(media && media.matches)) animation.play(); else animation.pause(); }); }
-    function cycle(node, index, previous, old) {
+    function cycle(node, index, stagger) {
       if (disposed || !node.animate) return;
-      var points = [previous || point(null, index)];
-      for (var i = 1; i < 5; i++) points.push(point(points[i - 1], index, i === 3));
-      var animation = node.animate(points.map(function (p) { return p.frame; }), { duration: randomBetween(10000, 16000), easing: 'linear', fill: 'forwards' });
-      animations[index] = animation;
-      if (old) old.cancel();
-      animation.onfinish = function () { cycle(node, index, points[points.length - 1], animation); };
+      var duration = randomBetween(10000, 16000);
+      var angle = randomBetween(-Math.PI, Math.PI), speed = randomBetween(5, 8);
+      var distance = speed * duration / 1000;
+      var dx = Math.cos(angle) * distance, dy = Math.sin(angle) * distance * .4;
+      var x = [-34, 0, 34][index] + randomBetween(-10, 10), y = randomBetween(-10, 10);
+      var shape = ' scale(' + randomBetween(.94, 1.14) + ', ' + randomBetween(.9, 1.18) + ') rotate(' + randomBetween(-12, 12) + 'deg)';
+      function at(t) { return 'translate(' + (x + dx * (t - .5)) + '%, ' + (y + dy * (t - .5)) + '%)' + shape; }
+      // One velocity for this glow's lifetime. Only opacity eases independently.
+      var motion = node.animate([{ transform: at(0) }, { transform: at(1) }], { duration: duration, easing: 'linear', fill: 'both' });
+      var peak = randomBetween(.58, .82);
+      var fade = node.animate([
+        { opacity: 0, offset: 0, easing: 'ease-in-out' },
+        { opacity: peak, offset: randomBetween(.18, .28), easing: 'ease-in-out' },
+        { opacity: peak * randomBetween(.8, 1), offset: randomBetween(.6, .72), easing: 'ease-in-out' },
+        { opacity: 0, offset: 1 }
+      ], { duration: duration, easing: 'linear', fill: 'both' });
+      animations[index] = [motion, fade];
+      // Separate phases as well as random lifetimes keep the three glows independent.
+      if (stagger) { motion.currentTime = duration * (index + randomBetween(.45, .65)) / nodes.length; fade.currentTime = motion.currentTime; }
+      motion.onfinish = function () {
+        if (disposed) return;
+        var replacement = document.createElement('div'); replacement.className = node.className;
+        node.replaceWith(replacement); nodes[index] = replacement;
+        motion.onfinish = null; motion.cancel(); fade.cancel();
+        cycle(replacement, index, false);
+      };
       sync();
     }
-    nodes.forEach(function (node, index) { cycle(node, index); });
+    nodes.forEach(function (node, index) { cycle(node, index, true); });
     if (media && media.addEventListener) media.addEventListener('change', sync);
     return {
       update: function (value) { if (activeGlow !== value) { activeGlow = value; sync(); } },
-      dispose: function () { disposed = true; animations.forEach(function (animation) { animation.onfinish = null; animation.cancel(); }); if (media && media.removeEventListener) media.removeEventListener('change', sync); }
+      dispose: function () { disposed = true; animations.forEach(function (pair) { pair.forEach(function (animation) { animation.onfinish = null; animation.cancel(); }); }); if (media && media.removeEventListener) media.removeEventListener('change', sync); }
     };
   }
 
@@ -468,6 +488,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   }
 
   function restoreSlider(slider, state) {
+    if (state.effectsTimer !== null) root.clearTimeout(state.effectsTimer);
     if (state.pointer) state.pointer.dispose();
     restoreKnob(state);
     if (state.fill.__dshMotion) state.fill.__dshMotion.dispose();
@@ -692,10 +713,21 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   function paintSlider(slider, state, progress) {
     var level = state.pointer && state.pointer.level !== null ? state.pointer.level : progress;
     setAttribute(slider, maxMarker, level === 1 ? 'true' : 'false');
-    setAttribute(state.fill.querySelector('.zcode-thought-bubbles'), 'data-running', level === 1 ? 'true' : 'false');
-    if (state.fill.__dshMotion) state.fill.__dshMotion.update(level === 1);
+    var enabled = level === 1;
+    if (state.effectsActive !== enabled) {
+      state.effectsActive = enabled;
+      if (state.effectsTimer !== null) root.clearTimeout(state.effectsTimer);
+      state.effectsTimer = null;
+      var run = function (value) {
+        setAttribute(state.fill.querySelector('.zcode-thought-bubbles'), 'data-running', value ? 'true' : 'false');
+        if (state.fill.__dshMotion) state.fill.__dshMotion.update(value);
+      };
+      if (enabled) run(true);
+      else state.effectsTimer = root.setTimeout(function () { state.effectsTimer = null; run(false); }, 550);
+    }
     setStyle(slider, state, '--dsh-thought-progress', String(progress * 100) + '%');
-    setStyle(slider, state, '--dsh-thought-gradient', gradientForProgress(level));
+    setStyle(slider, state, '--dsh-thought-start-hue', String(194 + progress * 24));
+    setStyle(slider, state, '--dsh-thought-end-hue', String(210 + progress * 34));
     updatePresentation(slider, state, progress);
   }
 
@@ -778,7 +810,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     if (!state) {
       slider.querySelectorAll(':scope > .zcode-thought-fill, :scope > .zcode-thought-pointer, :scope > .zcode-thought-caption, :scope > .zcode-thought-scale, :scope > .zcode-thought-ticks').forEach(function (node) { node.remove(); });
       state = {
-        fill: createFill(), styles: new Map(),
+        fill: createFill(), styles: new Map(), effectsActive: false, effectsTimer: null,
         originalStyle: slider.getAttribute('style'), originalCss: slider.style.cssText,
         attributes: new Map([[marker, slider.getAttribute(marker)], [maxMarker, slider.getAttribute(maxMarker)], ['data-dsh-thought-settling', slider.getAttribute('data-dsh-thought-settling')]])
       };

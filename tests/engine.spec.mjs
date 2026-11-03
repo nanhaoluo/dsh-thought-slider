@@ -354,21 +354,21 @@ test('enhancement bypasses a foreign 150ms observer wrapper without changing the
  expect(r).toEqual({enhanced:true,globalPreserved:true});
 });
 
-test('cool gradients evolve gradually and max glow follows random continuous paths',async({page})=>{
+test('cool gradients evolve gradually and each glow has fixed velocity and fades into a replacement',async({page})=>{
  await install(page);
  const gradients=[];
- for(const value of [0,1,2,3,4]){await page.evaluate(value=>setHostProgress(value),value);gradients.push(await page.locator('#modern').evaluate(s=>s.style.getPropertyValue('--dsh-thought-gradient')))}
+ for(const value of [0,1,2,3,4]){await page.evaluate(value=>setHostProgress(value),value);gradients.push(await page.locator('#modern').evaluate(s=>getComputedStyle(s.querySelector('.zcode-thought-fill')).backgroundImage))}
  expect(new Set(gradients).size).toBe(5);
  const glow=page.locator('#modern .zcode-thought-glow').first();
- const data=await glow.evaluate(node=>{const a=node.getAnimations()[0];return {frames:a.effect.getKeyframes().map(f=>f.transform),duration:a.effect.getTiming().duration,state:a.playState}});
- expect(data.frames).toHaveLength(5);expect(new Set(data.frames).size).toBe(5);
- const xs=data.frames.map(f=>Number(/translate\((-?[\d.]+)%/.exec(f)[1]));
- const steps=xs.slice(1).map((x,i)=>x-xs[i]);
- expect(steps.some(x=>x>0)).toBe(true);expect(steps.some(x=>x<0)).toBe(true);
- expect(Math.max(...xs)-Math.min(...xs)).toBeGreaterThan(17);
+ const data=await glow.evaluate(node=>{const a=node.getAnimations().find(a=>a.effect.getKeyframes()[0].transform),fade=node.getAnimations().find(a=>a.effect.getKeyframes()[0].opacity!==undefined);return {frames:a.effect.getKeyframes().map(f=>f.transform),duration:a.effect.getTiming().duration,easing:a.effect.getTiming().easing,fade:fade.effect.getKeyframes().map(f=>Number(f.opacity)),state:a.playState}});
+ expect(data.frames).toHaveLength(2);expect(new Set(data.frames).size).toBe(2);expect(data.easing).toBe('linear');
+ expect(data.fade[0]).toBe(0);expect(data.fade.at(-1)).toBe(0);expect(data.fade[1]).toBeGreaterThan(.5);
  expect(data.duration).toBeGreaterThanOrEqual(10000);expect(data.duration).toBeLessThanOrEqual(16000);expect(data.state).toBe('running');
- const continuity=await glow.evaluate(async node=>{const old=node.getAnimations()[0],frames=old.effect.getKeyframes(),end=frames[frames.length-1].transform;old.finish();await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);const next=node.getAnimations()[0];return {different:next!==old,start:next.effect.getKeyframes()[0].transform,end}});
- expect(continuity.different).toBe(true);expect(continuity.start).toBe(continuity.end);
+ const stagger=await glow.evaluate(node=>[...node.getRootNode().querySelectorAll('.zcode-thought-glow')].map(n=>{const a=n.getAnimations()[0],duration=a.effect.getTiming().duration;return {duration,phase:a.currentTime/duration}}));
+ expect(stagger).toHaveLength(3);expect(new Set(stagger.map(s=>s.duration)).size).toBe(3);
+ expect(Math.max(...stagger.map(s=>s.phase))-Math.min(...stagger.map(s=>s.phase))).toBeGreaterThan(.5);
+ const renewal=await glow.evaluate(async node=>{const shadow=node.getRootNode(),old=node.getAnimations().find(a=>a.effect.getKeyframes()[0].transform);old.finish();await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);const next=shadow.querySelector('.zcode-thought-glow');return {replaced:next!==node,detached:!node.isConnected,count:shadow.querySelectorAll('.zcode-thought-glow').length,animations:next.getAnimations().length,startsTransparent:next.getAnimations().some(a=>a.effect.getKeyframes()[0].opacity==='0')}});
+ expect(renewal).toEqual({replaced:true,detached:true,count:3,animations:2,startsTransparent:true});
  await page.evaluate(()=>setHostProgress(3));
  await expect.poll(()=>glow.evaluate(el=>el.getAnimations()[0].playState)).toBe('paused');
  await page.evaluate(()=>setHostProgress(4));await page.emulateMedia({reducedMotion:'reduce'});

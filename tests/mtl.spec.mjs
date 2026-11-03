@@ -246,3 +246,36 @@ test('MTL waits for the preceding optimistic preview to clear before handing off
  await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('data-bre-dragging','true');
  await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','3');
 });
+
+test('MTL track colors change continuously inside a single intent level',async({page})=>{
+ const b=await drag(page,.25,.36),colors=[],names=[],hues=[];
+ for(const ratio of [.37,.38,.39,.4]){
+  await page.mouse.move(b.x+b.width*ratio,b.y+b.height/2);
+  colors.push(await page.locator('.zcode-thought-fill').evaluate(n=>getComputedStyle(n).backgroundImage));
+  hues.push(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(getComputedStyle(s).getPropertyValue('--dsh-thought-start-hue'))));
+  names.push(await page.locator('.bre-effort-slider-head-value').textContent());
+ }
+ expect(new Set(names).size).toBe(1);expect(new Set(colors).size).toBeGreaterThan(1);expect(new Set(hues).size).toBe(4);
+ hues.forEach((h,i)=>expect(h).toBeCloseTo(194+(.37+i*.01)*24,3));
+ await page.mouse.up();
+});
+
+test('MTL click interpolates track hues together with the thumb',async({page})=>{
+ await clickRatio(page,1);
+ const hues=await page.locator('.bre-effort-slider').evaluate(async s=>{const a=[];for(let i=0;i<16;i++){await new Promise(requestAnimationFrame);a.push(parseFloat(getComputedStyle(s).getPropertyValue('--dsh-thought-start-hue')))}return a});
+ expect(hues[0]).toBeGreaterThanOrEqual(206);expect(hues[0]).toBeLessThan(218);
+ expect(new Set(hues).size).toBeGreaterThan(3);expect(hues.at(-1)).toBeCloseTo(218,3);
+});
+
+test('MTL max effects enter and leave gradually and keep moving through exit',async({page})=>{
+ const b=await drag(page,.5,.92),fx=page.locator('.zcode-thought-bubbles');
+ const entering=await fx.evaluate(async n=>{await new Promise(r=>setTimeout(r,80));return Number(getComputedStyle(n).opacity)});
+ expect(entering).toBeGreaterThan(0);expect(entering).toBeLessThan(1);
+ await expect(fx).toHaveCSS('opacity','1');
+ await page.mouse.move(b.x+b.width*.5,b.y+b.height/2);
+ const leaving=await fx.evaluate(async n=>{await new Promise(r=>setTimeout(r,80));return {opacity:Number(getComputedStyle(n).opacity),moving:n.shadowRoot.querySelector('.zcode-thought-glow').getAnimations().every(a=>a.playState==='running')}});
+ expect(leaving.opacity).toBeGreaterThan(0);expect(leaving.opacity).toBeLessThan(1);expect(leaving.moving).toBe(true);
+ await expect(fx).toHaveCSS('opacity','0');
+ await expect.poll(()=>fx.evaluate(n=>n.shadowRoot.querySelector('.zcode-thought-glow').getAnimations().every(a=>a.playState==='paused'))).toBe(true);
+ await page.mouse.up();
+});
