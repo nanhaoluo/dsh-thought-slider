@@ -32,6 +32,7 @@ for (const [name, from, to, expected] of [
   test(`real host commits only once at the ${name} directional stop`, async ({ page }) => {
     await drag(page, from, to);
     await expect(page.locator('input')).toHaveValue(String(expected));
+    await expect(page.locator('.zcode-thought-caption-value')).toHaveText('Level ' + expected);
     expect(await page.evaluate(() => calls.length)).toBe(0);
     await page.mouse.up();
     await expect.poll(() => page.evaluate(() => calls.length)).toBe(1);
@@ -90,6 +91,7 @@ test('host refusal restores selection and visual progress', async ({ page }) => 
   await page.mouse.up();
   await expect(page.locator('.bre-model-error')).toContainText('refused');
   await expect(page.locator('input')).toHaveValue('2');
+  await expect(page.locator('.zcode-thought-caption-value')).toHaveText('Level 2');
   await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress', '50%');
 });
 

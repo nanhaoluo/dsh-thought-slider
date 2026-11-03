@@ -1,6 +1,6 @@
 {
   "name": "dsh-thought-slider",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "ZCode / Codex style reasoning-effort slider and layout enhancement for DeepSeek Harness model menu",
   "type": "module",
   "main": "lib/index.js",

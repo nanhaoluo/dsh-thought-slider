@@ -14,7 +14,7 @@ test('enhances the current host DOM without hiding model selection', async ({ pa
   await install(page);
   await expect(page.locator('#modern .zcode-thought-bubble')).toHaveCount(12);
   await expect(page.locator('.bre-model-row')).toBeVisible();
-  await expect(page.locator('#modern .bre-effort-knob')).toHaveCSS('width', '24px');
+  await expect(page.locator('#modern .bre-effort-knob')).toHaveCSS('width', '28px');
   await expect(page.locator('#modern input')).toHaveAttribute('aria-valuetext', '自定义最高');
 });
 
@@ -216,8 +216,8 @@ test('knob remains a true circle and covers the complete right end of the track'
     return { width: knob.width, height: knob.height, center: knob.x + knob.width / 2, edge: track.right,
       overlap: knob.right - fill.right, radius: getComputedStyle(slider.querySelector('.bre-effort-knob')).borderRadius };
   });
-  expect(geometry.width).toBe(24);
-  expect(geometry.height).toBe(24);
+  expect(geometry.width).toBe(28);
+  expect(geometry.height).toBe(28);
   expect(geometry.radius).toBe('50%');
   expect(Math.abs(geometry.center - geometry.edge)).toBeLessThan(1);
   expect(geometry.overlap).toBeGreaterThanOrEqual(11.5);
@@ -229,4 +229,23 @@ test('unknown continuous ranges keep their original input accessible', async ({ 
   await expect(page.locator('#modern .zcode-thought-pointer')).toHaveCount(0);
   await page.locator('#modern input').evaluate(input => input.setAttribute('step', '1'));
   await expect(page.locator('#modern .zcode-thought-pointer')).toHaveCount(1);
+});
+
+test('caption preserves custom names and ticks follow the configured range', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 480 });
+  await install(page);
+  await expect(page.locator('#modern .zcode-thought-tick')).toHaveCount(5);
+  const name = '自定义模型的超长思考强度名称 · 完整保留';
+  await page.locator('#modern input').evaluate((input, name) => {
+    input.setAttribute('aria-valuetext', name);
+    input.max = '6';
+    input.step = '2';
+  }, name);
+  await expect(page.locator('#modern .zcode-thought-caption-value')).toHaveText(name);
+  await expect(page.locator('#modern .zcode-thought-tick')).toHaveCount(4);
+  const caption = await page.locator('#modern .zcode-thought-caption').boundingBox();
+  expect(caption.x).toBeGreaterThanOrEqual(0);
+  expect(caption.x + caption.width).toBeLessThanOrEqual(320);
+  await page.evaluate(() => window.__DSH_THOUGHT_SLIDER__.uninstall());
+  await expect(page.locator('.zcode-thought-caption, .zcode-thought-ticks, .zcode-thought-scale')).toHaveCount(0);
 });
