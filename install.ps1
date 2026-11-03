@@ -61,7 +61,8 @@ Write-Host "==> 释放独立副本到 $dest" -ForegroundColor Cyan
 $tmp = Join-Path $env:TEMP ("dsh-install-" + [guid]::NewGuid().ToString("n"))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 try {
-    & tar --force-local -xzf $tarball -C $tmp
+    & tar -xzf $tarball -C $tmp
+    if ($LASTEXITCODE -ne 0) { throw "tar extraction failed (exit $LASTEXITCODE)" }
     $src = Join-Path $tmp "package"
     if (-not (Test-Path $src)) { throw "tarball 结构异常，缺少 package/ 目录" }
 
