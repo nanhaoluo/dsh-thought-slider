@@ -8,7 +8,7 @@
   'use strict';
   if (!root) return;
   if (root.__DSH_THOUGHT_SLIDER__) {
-    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.9') return;
+    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.10') return;
     root.__DSH_THOUGHT_SLIDER__.uninstall();
   }
 
@@ -116,9 +116,11 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   position: absolute;
   top: 0;
   left: 0;
-  width: var(--dsh-thought-progress);
+  /* Keep gradients and motion in full-track coordinates; reveal only up to the knob. */
+  width: 100%;
   height: 100%;
-  border-radius: 999px 0 0 999px;
+  clip-path: inset(0 clamp(0%, calc(100% - var(--dsh-thought-progress)), 100%) 0 0);
+  border-radius: 999px;
   corner-shape: round !important;
   background: linear-gradient(100deg, hsl(var(--dsh-thought-start-hue), 86%, 51%), hsl(var(--dsh-thought-end-hue), 88%, 61%));
   overflow: hidden;
@@ -156,7 +158,7 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   animation: none !important;
 }
 .bre-effort-slider[data-dsh-thought-settling="true"] :is(.bre-effort-slider-thumb, .bre-effort-knob) { transition: left var(--dsh-thought-settle-duration, 320ms) ${SETTLE_EASING} !important; }
-.bre-effort-slider[data-dsh-thought-settling="true"] .zcode-thought-fill { transition: width var(--dsh-thought-settle-duration, 320ms) ${SETTLE_EASING} !important; }
+.bre-effort-slider[data-dsh-thought-settling="true"] .zcode-thought-fill { transition: clip-path var(--dsh-thought-settle-duration, 320ms) ${SETTLE_EASING} !important; }
 .bre-effort-slider[data-dsh-thought-settling="true"] { transition: --dsh-thought-start-hue var(--dsh-thought-settle-duration, 320ms) cubic-bezier(.25,.1,.25,1), --dsh-thought-end-hue var(--dsh-thought-settle-duration, 320ms) cubic-bezier(.25,.1,.25,1) !important; }
 .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::before,
 .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::after {
@@ -962,7 +964,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   }
 
   root.__DSH_THOUGHT_SLIDER__ = {
-    version: '1.0.9', install: install, uninstall: uninstall,
+    version: '1.0.10', install: install, uninstall: uninstall,
     scanAndHarmonize: scanAndHarmonize, CSS: SLIDER_CSS
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

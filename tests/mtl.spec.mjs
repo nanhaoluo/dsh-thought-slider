@@ -17,7 +17,8 @@ for(const [from,to,index] of [[.25,.6,3],[.75,.6,2],[.5,1,4]])test(`MTL real han
  if(index===2){await page.locator('.bre-effort-slider').focus();await page.keyboard.press('End');await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','4');await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');await page.evaluate(()=>{calls.length=0})}
  await drag(page,from,to);expect(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(s.style.getPropertyValue('--dsh-thought-progress')))).toBeCloseTo(to*100,3);
  await expect(page.locator('.bre-effort-slider-head-value')).toHaveText('Level '+index);
- expect(await page.evaluate(()=>calls.length)).toBe(0);
+ // Live sync can already save a stable target before the mouse is released.
+ expect(await page.evaluate(()=>calls.length)).toBeLessThanOrEqual(1);
  await page.mouse.up();await expect.poll(()=>page.evaluate(()=>calls.length)).toBe(1);
  expect(await page.evaluate(()=>calls[0].reasoningEffort)).toBe('e'+index);
  await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow',String(index));
@@ -290,6 +291,32 @@ test('MTL click interpolates track hues together with the thumb',async({page})=>
  const hues=await page.locator('.bre-effort-slider').evaluate(async s=>{const a=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);a.push(parseFloat(getComputedStyle(s).getPropertyValue('--dsh-thought-start-hue')))}return a});
  expect(hues[0]).toBeGreaterThanOrEqual(206);expect(hues[0]).toBeLessThan(218);
  expect(new Set(hues).size).toBeGreaterThan(3);expect(hues.at(-1)).toBeCloseTo(218,3);
+});
+
+test('MTL full-length colors and effects stay fixed while the mask follows dragging and spring settling',async({page})=>{
+ const s=page.locator('.bre-effort-slider');
+ const measure=async s=>{
+  const read=()=>{
+   const track=s.getBoundingClientRect(),fill=s.querySelector('.zcode-thought-fill'),box=fill.getBoundingClientRect();
+   const knob=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();
+   const values=getComputedStyle(fill).clipPath.slice(6,-1).split(/\s+/),right=values[1]||values[0];
+   const inset=parseFloat(right)*(right.endsWith('%')?box.width/100:1);
+   return {width:box.width,trackWidth:track.width,effectsWidth:parseFloat(getComputedStyle(fill.querySelector('.zcode-thought-bubbles')).width),
+    edge:Math.max(track.left,Math.min(track.right,box.right-inset)),knob:Math.max(track.left,Math.min(track.right,knob.x+knob.width/2))};
+  };
+  const frames=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);frames.push(read())}return frames;
+ };
+ await clickRatio(page,1);
+ const frames=await s.evaluate(measure);
+ const b=await drag(page,1,.34);
+ for(const ratio of [.2,.55,.9]){
+  await page.mouse.move(b.x+b.width*ratio,b.y+b.height/2);
+  frames.push(...await s.evaluate(measure));
+ }
+ await page.mouse.up();frames.push(...await s.evaluate(measure));
+ await clickRatio(page,0);frames.push(...await s.evaluate(measure));
+ for(const frame of frames){expect(Math.abs(frame.width-frame.trackWidth)).toBeLessThan(.1);expect(Math.abs(frame.effectsWidth-frame.trackWidth)).toBeLessThan(.1);expect(Math.abs(frame.edge-frame.knob)).toBeLessThan(.6)}
+ expect(new Set(frames.map(frame=>Math.round(frame.edge))).size).toBeGreaterThan(8);
 });
 
 test('MTL max effects enter and leave gradually and keep moving through exit',async({page})=>{

@@ -54,7 +54,7 @@ test('only the exact highest stop runs particles', async ({ page }) => {
   await expect(page.locator('#legacy .zcode-thought-bubble').first()).toHaveCSS('animation-play-state', 'paused');
 });
 
-test('dragging and keyboard changes preserve host selection and align fill with knob', async ({ page }) => {
+test('dragging and keyboard changes preserve selection and align the full-track mask with the knob', async ({ page }) => {
   await install(page);
   const input = page.locator('#modern input');
   const box = await input.boundingBox();
@@ -79,10 +79,14 @@ test('dragging and keyboard changes preserve host selection and align fill with 
     const track = slider.getBoundingClientRect();
     const knob = slider.querySelector('.bre-effort-knob').getBoundingClientRect();
     const fill = slider.querySelector('.zcode-thought-fill').getBoundingClientRect();
-    return { center: knob.x + knob.width / 2, expected: track.x + track.width / 4, fill: fill.right };
+    const clip = getComputedStyle(slider.querySelector('.zcode-thought-fill')).clipPath;
+    const rightInset = parseFloat(clip.match(/^inset\(0px ([\d.]+)%/)[1]);
+    return { center: knob.x + knob.width / 2, expected: track.x + track.width / 4,
+      width: fill.width, trackWidth: track.width, reveal: fill.right - fill.width * rightInset / 100 };
   });
   expect(Math.abs(positions.center - positions.expected)).toBeLessThan(2);
-  expect(Math.abs(positions.center - positions.fill)).toBeLessThan(2);
+  expect(Math.abs(positions.width - positions.trackWidth)).toBeLessThan(1);
+  expect(Math.abs(positions.center - positions.reveal)).toBeLessThan(2);
 });
 
 test('uninstall restores host DOM and allows reinstall', async ({ page }) => {
