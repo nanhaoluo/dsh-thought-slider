@@ -286,3 +286,34 @@ test('host can update and remove a slider in one render without observer errors'
   expect(errors).toEqual([]);
   await expect(page.locator('.zcode-thought-caption')).toHaveCount(0);
 });
+
+test('particles vary independently and fade before finishing their right-to-left travel', async ({ page }) => {
+  await install(page);
+  const result = await page.locator('#modern .zcode-thought-bubbles').evaluate(container => {
+    const particles = [...container.children];
+    const samples = particles.map(el => ({ top: parseFloat(el.style.top), duration: parseFloat(el.style.animationDuration),
+      alpha: Number(el.style.getPropertyValue('--particle-alpha')), curve: el.style.animationTimingFunction }));
+    const phases = [.25, .95].map(phase => particles.slice(0, 4).map(el => {
+      for (const animation of el.getAnimations()) {
+        animation.pause();
+        const { delay, duration } = animation.effect.getTiming();
+        animation.currentTime = delay + duration * (2 + phase);
+      }
+      return { x: el.getBoundingClientRect().x, alpha: Number(getComputedStyle(el).opacity) };
+    }));
+    return { samples, phases };
+  });
+  expect(new Set(result.samples.map(s => s.top)).size).toBeGreaterThan(8);
+  expect(new Set(result.samples.map(s => s.duration)).size).toBeGreaterThan(8);
+  expect(new Set(result.samples.map(s => s.alpha)).size).toBeGreaterThan(8);
+  for (const s of result.samples) {
+    expect(s.top).toBeGreaterThanOrEqual(12); expect(s.top).toBeLessThanOrEqual(88);
+    expect(s.duration).toBeGreaterThanOrEqual(2.6); expect(s.duration).toBeLessThanOrEqual(5.8);
+    expect(s.alpha).toBeGreaterThanOrEqual(.4); expect(s.alpha).toBeLessThanOrEqual(.68);
+  }
+  for (let i = 0; i < 4; i++) {
+    expect(result.phases[0][i].alpha).toBeGreaterThan(.35);
+    expect(result.phases[1][i].alpha).toBeLessThan(.01);
+    expect(result.phases[1][i].x).toBeLessThan(result.phases[0][i].x);
+  }
+});
