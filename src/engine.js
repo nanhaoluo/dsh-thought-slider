@@ -8,7 +8,7 @@
   'use strict';
   if (!root) return;
   if (root.__DSH_THOUGHT_SLIDER__) {
-    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.2') return;
+    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.3') return;
     root.__DSH_THOUGHT_SLIDER__.uninstall();
   }
 
@@ -28,64 +28,16 @@
   ];
 
   var SLIDER_CSS = `
-/* Keep model-selection rows visible; the host owns switching menu panes. */
-.codexModelSelectMenu.bre-model-menu-host:has([data-dsh-thought-slider]) {
-  max-height: min(520px, calc(100dvh - 32px)) !important;
-  overflow-y: auto !important;
-  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .08)) !important;
-  border-radius: 16px !important;
-  background: var(--dsw-alias-bg-layer-1, #fff) !important;
-  color: var(--dsw-alias-label-primary, #242424);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .08), 0 2px 6px rgba(0, 0, 0, .04) !important;
-}
-body[data-ds-dark-theme] .codexModelSelectMenu.bre-model-menu-host:has([data-dsh-thought-slider]) {
-  background: var(--dsw-alias-bg-layer-1, #252628) !important;
-  border-color: var(--dsw-alias-border-l2, rgba(255, 255, 255, .1)) !important;
-  color: var(--dsw-alias-label-primary, #ececec);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, .25) !important;
-}
-.bre-slider-advanced:has([data-dsh-thought-slider="current"]) { padding: 14px 16px !important; }
-.bre-effort:has(> [data-dsh-thought-slider="current"]) {
+/* Enhance only the reasoning control; keep the host model menu layout. */
+.bre-effort:has(> [data-dsh-thought-slider="current"] > .zcode-thought-caption) {
   box-sizing: border-box !important;
-  height: 88px !important;
-  padding: 28px 0 20px !important;
-}
-.bre-slider-body:has([data-dsh-thought-slider]) .bre-menu-separator {
-  height: 1px;
-  margin: 0 14px;
-  background: var(--dsw-alias-border-l2, rgba(128, 128, 128, .14));
-}
-.bre-slider-body:has([data-dsh-thought-slider]) .bre-model-row {
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 10px 16px;
-  border: 0;
-  border-radius: 0 0 15px 15px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-}
-.bre-slider-body:has([data-dsh-thought-slider]) .bre-model-row:hover {
-  background: var(--dsw-alias-fill-tertiary, rgba(128, 128, 128, .08));
-}
-.bre-slider-body:has([data-dsh-thought-slider]) .bre-model-row-effort {
-  color: var(--dsw-alias-label-tertiary, #838383);
-  font-size: 12px;
-}
-.bre-slider-body:has([data-dsh-thought-slider="current"]) .bre-model-row-effort { display: none; }
-.bre-model-menu-host:has([data-dsh-thought-slider]) .bre-providers {
-  width: 128px !important;
-  flex-shrink: 0;
+  height: 64px !important;
+  padding: 28px 0 0 !important;
 }
 .bre-effort-slider-head:has(+ [data-dsh-thought-slider]) {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
   padding: 0 4px;
@@ -182,8 +134,9 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
 .bre-effort-slider[data-dsh-thought-slider] .bre-effort-input {
   z-index: 5 !important;
 }
-.zcode-thought-caption, .zcode-thought-scale {
+.zcode-thought-caption {
   position: absolute;
+  top: -30px;
   left: -14px;
   right: -14px;
   display: flex;
@@ -191,37 +144,20 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   justify-content: space-between;
   gap: 12px;
   pointer-events: none;
-  line-height: 18px;
-  font-family: inherit;
+  line-height: 20px;
+  font: inherit;
 }
-.zcode-thought-caption { top: -32px; font-size: 12px; }
 .zcode-thought-caption-label { color: var(--dsw-alias-label-secondary, #737373); white-space: nowrap; }
 .zcode-thought-caption-value {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary, #262626);
 }
-.zcode-thought-scale { top: 34px; font-size: 11px; color: var(--dsw-alias-label-tertiary, #818181); }
-body[data-ds-dark-theme] .zcode-thought-caption-label,
-body[data-ds-dark-theme] .zcode-thought-scale { color: var(--dsw-alias-label-secondary, #a0a0a0); }
+body[data-ds-dark-theme] .zcode-thought-caption-label { color: var(--dsw-alias-label-secondary, #a0a0a0); }
 body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-label-primary, #ececec); }
-.zcode-thought-ticks { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
-.zcode-thought-tick {
-  position: absolute;
-  top: 50%;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(93, 93, 93, .34);
-}
-body[data-ds-dark-theme] .zcode-thought-tick { background: rgba(220, 220, 220, .34); }
-.zcode-thought-tick[data-passed="true"] { background: rgba(255, 255, 255, .45) !important; }
-.zcode-thought-tick:first-child, .zcode-thought-tick:last-child { visibility: hidden; }
 .bre-effort-slider[data-dsh-thought-slider] .bre-effort-slider-tick {
   position: absolute !important;
   top: 50% !important;
@@ -290,7 +226,10 @@ body[data-ds-dark-theme] .zcode-thought-tick { background: rgba(220, 220, 220, .
   };
 
   function gradientForProgress(pct) {
-    return pct === 1 ? 'linear-gradient(90deg, #0285ff 0%, #5365ed 100%)' : '#0285ff';
+    if (pct === 1) return 'linear-gradient(90deg, #10b981 0%, #06b6d4 30%, #3b82f6 65%, #8b5cf6 88%, #a855f7 100%)';
+    if (pct >= .65) return 'linear-gradient(90deg, #10b981 0%, #06b6d4 35%, #0ea5e9 70%, #3b82f6 100%)';
+    if (pct >= .35) return 'linear-gradient(90deg, #10b981 0%, #06b6d4 60%, #0ea5e9 100%)';
+    return 'linear-gradient(90deg, #10b981 0%, #14b8a6 100%)';
   }
 
   function percentage(value) {
@@ -521,7 +460,10 @@ body[data-ds-dark-theme] .zcode-thought-tick { background: rgba(220, 220, 220, .
 
   function updatePresentation(slider, state, progress) {
     var input = slider.querySelector('input.bre-effort-input[type="range"]');
-    if (!input) {
+    // Existing model-menu controls already own their heading and stop labels.
+    // Only supply a compact heading for the older standalone range component.
+    var head = slider.parentElement.querySelector('.bre-effort-slider-head');
+    if (!input || head) {
       if (state.presentation) state.presentation.nodes.forEach(function (node) { node.remove(); });
       state.presentation = null;
       return;
@@ -535,41 +477,16 @@ body[data-ds-dark-theme] .zcode-thought-tick { background: rgba(220, 220, 220, .
       var value = document.createElement('span');
       value.className = 'zcode-thought-caption-value';
       caption.append(label, value);
-      var scale = document.createElement('div');
-      scale.className = 'zcode-thought-scale';
-      var low = document.createElement('span');
-      var high = document.createElement('span');
-      scale.append(low, high);
-      var ticks = document.createElement('div');
-      ticks.className = 'zcode-thought-ticks';
-      ui = state.presentation = { nodes: [caption, scale, ticks], label: label, value: value, low: low, high: high, ticks: ticks, count: null };
+      ui = state.presentation = { nodes: [caption], label: label, value: value };
       ui.nodes.forEach(function (node) { node.setAttribute('aria-hidden', 'true'); });
     }
     ui.nodes.forEach(function (node) { if (node.parentNode !== slider) slider.appendChild(node); });
     function text(node, value) { if (node.textContent !== value) node.textContent = value; }
     var chinese = !document.documentElement.lang || /^zh/i.test(document.documentElement.lang);
     text(ui.label, chinese ? '思考强度' : 'Reasoning effort');
-    text(ui.low, chinese ? '更轻量' : 'Lighter');
-    text(ui.high, chinese ? '更深入' : 'Deeper');
     var name = input.getAttribute('aria-valuetext') || input.value;
     text(ui.value, name);
     if (ui.value.title !== name) ui.value.title = name;
-    var count = stopCount(input);
-    // Dense/continuous scales keep their original input; don't invent stops.
-    if (!Number.isInteger(count) || count < 1 || count > 24) count = 0;
-    if (ui.count !== count) {
-      ui.ticks.replaceChildren();
-      for (var i = 0; count && i <= count; i++) {
-        var tick = document.createElement('span');
-        tick.className = 'zcode-thought-tick';
-        tick.style.left = (i / count * 100) + '%';
-        ui.ticks.appendChild(tick);
-      }
-      ui.count = count;
-    }
-    Array.from(ui.ticks.children).forEach(function (tick, index) {
-      setAttribute(tick, 'data-passed', index / count <= progress + 1e-8 ? 'true' : 'false');
-    });
   }
 
   function syncPointer(slider, state) {
@@ -587,6 +504,7 @@ body[data-ds-dark-theme] .zcode-thought-tick { background: rgba(220, 220, 220, .
   function refreshSlider(slider) {
     var state = sliders.get(slider);
     if (!state) return;
+    if (!slider.isConnected) { restoreSlider(slider, state); return; }
     var value = readSlider(slider);
     if (!value) { restoreSlider(slider, state); return; }
     syncPointer(slider, state);
@@ -721,7 +639,7 @@ body[data-ds-dark-theme] .zcode-thought-tick { background: rgba(220, 220, 220, .
   }
 
   root.__DSH_THOUGHT_SLIDER__ = {
-    version: '1.0.2', install: install, uninstall: uninstall,
+    version: '1.0.3', install: install, uninstall: uninstall,
     scanAndHarmonize: scanAndHarmonize, CSS: SLIDER_CSS
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -231,10 +231,10 @@ test('unknown continuous ranges keep their original input accessible', async ({ 
   await expect(page.locator('#modern .zcode-thought-pointer')).toHaveCount(1);
 });
 
-test('caption preserves custom names and ticks follow the configured range', async ({ page }) => {
+test('standalone caption preserves custom names without adding hints or ticks', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 480 });
   await install(page);
-  await expect(page.locator('#modern .zcode-thought-tick')).toHaveCount(5);
+  await expect(page.locator('.zcode-thought-scale, .zcode-thought-ticks')).toHaveCount(0);
   const name = '自定义模型的超长思考强度名称 · 完整保留';
   await page.locator('#modern input').evaluate((input, name) => {
     input.setAttribute('aria-valuetext', name);
@@ -242,10 +242,47 @@ test('caption preserves custom names and ticks follow the configured range', asy
     input.step = '2';
   }, name);
   await expect(page.locator('#modern .zcode-thought-caption-value')).toHaveText(name);
-  await expect(page.locator('#modern .zcode-thought-tick')).toHaveCount(4);
+  await expect(page.getByText('更轻量', { exact: true })).toHaveCount(0);
   const caption = await page.locator('#modern .zcode-thought-caption').boundingBox();
   expect(caption.x).toBeGreaterThanOrEqual(0);
   expect(caption.x + caption.width).toBeLessThanOrEqual(320);
   await page.evaluate(() => window.__DSH_THOUGHT_SLIDER__.uninstall());
   await expect(page.locator('.zcode-thought-caption, .zcode-thought-ticks, .zcode-thought-scale')).toHaveCount(0);
+});
+
+
+test('existing model-menu heading and stop labels are preserved without duplication', async ({ page }) => {
+  await page.setContent(fixture);
+  await page.locator('#modern').evaluate(slider => {
+    slider.insertAdjacentHTML('beforebegin', '<div class="bre-effort-slider-head"><span class="bre-effort-slider-head-label">思考等级</span><span class="bre-effort-slider-head-value">Max</span></div>');
+    slider.insertAdjacentHTML('afterend', '<div class="bre-effort-slider-labels"><span>Off</span><span>Low</span><span>High</span><span>Max</span></div>');
+  });
+  const originalMenu = await page.locator('[role="menu"]').evaluate(el => {
+    const style = getComputedStyle(el);
+    return [style.borderRadius, style.backgroundColor, style.boxShadow];
+  });
+  await page.addScriptTag({ content: engineSource });
+  await page.evaluate(() => window.__DSH_THOUGHT_SLIDER__.install());
+  await expect(page.locator('.zcode-thought-caption, .zcode-thought-scale, .zcode-thought-ticks')).toHaveCount(0);
+  await expect(page.locator('.bre-effort-slider-labels')).toHaveText('OffLowHighMax');
+  await expect(page.locator('.bre-effort-slider-labels')).toBeVisible();
+  expect(await page.locator('[role="menu"]').evaluate(el => {
+    const style = getComputedStyle(el);
+    return [style.borderRadius, style.backgroundColor, style.boxShadow];
+  })).toEqual(originalMenu);
+});
+
+
+test('host can update and remove a slider in one render without observer errors', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await install(page);
+  await page.evaluate(async () => {
+    window.setHostProgress(2);
+    document.querySelector('#modern').remove();
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+  });
+  expect(errors).toEqual([]);
+  await expect(page.locator('.zcode-thought-caption')).toHaveCount(0);
 });
