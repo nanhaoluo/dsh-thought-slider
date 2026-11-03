@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { travelBox } from './geometry.mjs';
 
 const fixture = await readFile(new URL('./fixtures/slider.html', import.meta.url), 'utf8');
 const engineSource = await readFile(process.env.THOUGHT_SLIDER_ENGINE || new URL('../src/engine.js', import.meta.url), 'utf8');
@@ -57,7 +58,7 @@ test('only the exact highest stop runs particles', async ({ page }) => {
 test('dragging and keyboard changes preserve selection and align the full-track mask with the knob', async ({ page }) => {
   await install(page);
   const input = page.locator('#modern input');
-  const box = await input.boundingBox();
+  const box = await travelBox(input);
   await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 4, box.y + box.height / 2, { steps: 6 });
@@ -80,9 +81,14 @@ test('dragging and keyboard changes preserve selection and align the full-track 
     const knob = slider.querySelector('.bre-effort-knob').getBoundingClientRect();
     const fill = slider.querySelector('.zcode-thought-fill').getBoundingClientRect();
     const clip = getComputedStyle(slider.querySelector('.zcode-thought-fill')).clipPath;
-    const rightInset = parseFloat(clip.match(/^inset\(0px ([\d.]+)%/)[1]);
-    return { center: knob.x + knob.width / 2, expected: track.x + track.width / 4,
-      width: fill.width, trackWidth: track.width, reveal: fill.right - fill.width * rightInset / 100 };
+    const right = clip.match(/^inset\(0px (.+) 0px 0px\)$/)[1];
+    const probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;height:0;padding:0;border:0;width:' + right;
+    slider.querySelector('.zcode-thought-fill').appendChild(probe);
+    const rightInset = probe.getBoundingClientRect().width;
+    probe.remove();
+    return { center: knob.x + knob.width / 2, expected: track.x + 12 + (track.width - 24) / 4,
+      width: fill.width, trackWidth: track.width, reveal: fill.right - rightInset };
   });
   expect(Math.abs(positions.center - positions.expected)).toBeLessThan(2);
   expect(Math.abs(positions.width - positions.trackWidth)).toBeLessThan(1);
@@ -182,8 +188,8 @@ test('particles span the fill, pause below maximum, and respect reduced motion',
   const bubble = page.locator('#modern .zcode-thought-bubble').first();
   await expect(bubble).toHaveCSS('animation-play-state', 'running');
   const fillBox = await page.locator('#modern .zcode-thought-fill').boundingBox();
-  const bubbleBox = await bubble.boundingBox();
-  expect(Math.abs(fillBox.width - bubbleBox.width)).toBeLessThan(1);
+  const bubbleWidth = await bubble.evaluate(n => parseFloat(getComputedStyle(n).width));
+  expect(Math.abs(fillBox.width - bubbleWidth)).toBeLessThan(1);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(bubble).toHaveCSS('animation-name', 'none');
 });
@@ -218,14 +224,73 @@ test('knob remains a true circle and covers the complete right end of the track'
     const track = slider.getBoundingClientRect();
     const knob = slider.querySelector('.bre-effort-knob').getBoundingClientRect();
     const fill = slider.querySelector('.zcode-thought-fill').getBoundingClientRect();
-    return { width: knob.width, height: knob.height, center: knob.x + knob.width / 2, edge: track.right,
+    return { width: knob.width, height: knob.height, center: knob.x + knob.width / 2, edge: track.right - 12,
       overlap: knob.right - fill.right, radius: getComputedStyle(slider.querySelector('.bre-effort-knob')).borderRadius };
   });
   expect(geometry.width).toBe(28);
   expect(geometry.height).toBe(28);
   expect(geometry.radius).toBe('50%');
   expect(Math.abs(geometry.center - geometry.edge)).toBeLessThan(1);
-  expect(geometry.overlap).toBeGreaterThanOrEqual(11.5);
+  expect(geometry.overlap).toBeGreaterThanOrEqual(1.5);
+});
+
+test('ticks join the leftward particles at maximum and return linearly from the right', async ({ page }) => {
+  await page.setContent(fixture);
+  await page.locator('#legacy').evaluate(s => {
+    for (const value of [25, 50, 75]) s.insertAdjacentHTML('beforeend', `<span class="bre-effort-slider-tick" style="left: ${value}%"></span>`);
+  });
+  await page.addScriptTag({ content: engineSource });
+  await page.evaluate(() => window.__DSH_THOUGHT_SLIDER__.install());
+  const flight = await page.locator('#legacy').evaluate(async s => {
+    const layer = s.querySelector('.zcode-thought-ticks').shadowRoot;
+    const nodes = [...layer.querySelectorAll('.zcode-thought-tick-particle')];
+    const samples = nodes.map(node => {
+      const a = node.getAnimations()[0], duration = a.effect.getTiming().duration;
+      a.pause(); a.currentTime = duration * .2; const first = node.getBoundingClientRect().x;
+      a.currentTime = duration * .6; const second = node.getBoundingClientRect().x;
+      a.currentTime = duration; const end = node.getBoundingClientRect().x;
+      const alpha = Number(getComputedStyle(node).opacity); a.finish();
+      return { first, second, end, alpha };
+    });
+    await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
+    return { count: nodes.length, samples, remaining: layer.querySelectorAll('.zcode-thought-tick-particle').length,
+      hidden: [...s.querySelectorAll('.bre-effort-slider-tick')].every(n => getComputedStyle(n).opacity === '0') };
+  });
+  expect(flight.count).toBe(3); expect(flight.remaining).toBe(0); expect(flight.hidden).toBe(true);
+  for (const sample of flight.samples) {
+    expect(sample.second).toBeLessThan(sample.first); expect(sample.end).toBeLessThan(sample.second);
+    expect(sample.first - sample.second).toBeCloseTo(sample.second - sample.end, 1); expect(sample.alpha).toBeGreaterThanOrEqual(.89); expect(sample.alpha).toBeLessThanOrEqual(1);
+  }
+  await page.locator('#legacy .bre-effort-slider-thumb').evaluate(k => { k.style.left = '50%'; });
+  const restored = await page.locator('#legacy').evaluate(async s => {
+    await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
+    const tick = [...s.querySelectorAll('.bre-effort-slider-tick')].find(n => n.style.left === '25%');
+    const transitions = tick.getAnimations(); transitions.forEach(a => a.pause());
+    const samples = [.25, .75, 1].map(phase => {
+      transitions.forEach(a => { a.currentTime = a.effect.getTiming().duration * phase; });
+      const css = getComputedStyle(tick);
+      return { alpha: Number(css.opacity), shift: new DOMMatrixReadOnly(css.transform).m41 };
+    });
+    return { samples, curves: transitions.map(a => a.effect.getTiming().easing), leftHidden: getComputedStyle(s.querySelector('[style*="left: 0%"]')).display === 'none' };
+  });
+  expect(restored.leftHidden).toBe(true); expect(restored.curves).toEqual(['linear', 'linear']);
+  for (let i = 0; i < 3; i++) {
+    expect(restored.samples[i].alpha).toBeCloseTo([.225, .675, .9][i], 2);
+    expect(restored.samples[i].shift).toBeCloseTo([9, 3, 0][i], 1);
+  }
+});
+
+test('reduced motion removes tick flights and restores ticks immediately', async ({ page }) => {
+  await page.setContent(fixture);
+  await page.locator('#legacy').evaluate(s => s.insertAdjacentHTML('beforeend', '<span class="bre-effort-slider-tick" style="left: 50%"></span>'));
+  await page.addScriptTag({ content: engineSource });
+  await page.evaluate(() => window.__DSH_THOUGHT_SLIDER__.install());
+  await expect(page.locator('#legacy .zcode-thought-tick-particle')).toHaveCount(1);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('#legacy .zcode-thought-tick-particle')).toHaveCount(0);
+  await page.locator('#legacy .bre-effort-slider-thumb').evaluate(k => { k.style.left = '50%'; });
+  await expect(page.locator('#legacy .bre-effort-slider-tick').nth(2)).toHaveCSS('opacity', '0.9');
+  await expect(page.locator('#legacy .bre-effort-slider-tick').nth(2)).toHaveCSS('transition-duration', '0s');
 });
 
 test('unknown continuous ranges keep their original input accessible', async ({ page }) => {

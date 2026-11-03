@@ -2,6 +2,7 @@ import {test,expect} from '@playwright/test';
 import {build} from 'esbuild';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
+import { travelBox } from './geometry.mjs';
 const engine=await readFile('src/engine.js','utf8');
 const bundle=await build({entryPoints:['tests/fixtures/mtl-host.jsx'],bundle:true,write:false,format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'catalog-stubs',setup(b){b.onResolve({filter:/(configured-inputs|knowledge|capacity|provider-enabled|provider-order|model-order|effort-memory)\.js$/},()=>({path:path.resolve('tests/fixtures/mtl/helpers.js')}));}}]});
 test.beforeEach(async({page})=>{
@@ -12,7 +13,7 @@ test.beforeEach(async({page})=>{
  await page.addScriptTag({content:engine});await page.evaluate(()=>window.__DSH_THOUGHT_SLIDER__.install());
 });
 test.afterEach(async({page})=>expect(page.errors).toEqual([]));
-async function drag(page,from,to){const r=await page.locator('.bre-effort-slider').boundingBox();await page.mouse.move(r.x+r.width*from,r.y+r.height/2);await page.mouse.down();await page.mouse.move(r.x+r.width*to,r.y+r.height/2,{steps:8});return r;}
+async function drag(page,from,to){const r=await travelBox(page.locator('.bre-effort-slider'));await page.mouse.move(r.x+r.width*from,r.y+r.height/2);await page.mouse.down();await page.mouse.move(r.x+r.width*to,r.y+r.height/2,{steps:8});return r;}
 for(const [from,to,index] of [[.25,.6,3],[.75,.6,2],[.5,1,4]])test(`MTL real handlers snap ${from} to ${to} and submit once`,async({page})=>{
  if(index===2){await page.locator('.bre-effort-slider').focus();await page.keyboard.press('End');await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','4');await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');await page.evaluate(()=>{calls.length=0})}
  await drag(page,from,to);expect(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(s.style.getPropertyValue('--dsh-thought-progress')))).toBeCloseTo(to*100,3);
@@ -43,6 +44,22 @@ test('MTL geometry survives global squircle and minimum-height overrides',async(
  await expect(page.locator('.bre-effort-slider-thumb')).toHaveCSS('border-radius','50%');
  await expect(page.locator('.bre-effort-slider-thumb')).toHaveCSS('width','28px');
  await expect(page.locator('.bre-effort-slider-thumb')).toHaveCSS('height','28px');
+});
+test('MTL end stops align with both round cap centers and ticks use the same inset travel',async({page})=>{
+ const s=page.locator('.bre-effort-slider');
+ const aligned=await s.evaluate(s=>{
+  const box=s.getBoundingClientRect();
+  return [...s.querySelectorAll('.bre-effort-slider-tick')].map(t=>{const r=t.getBoundingClientRect();return {zero:t.style.left==='0%',hidden:getComputedStyle(t).display==='none',error:Math.abs(r.x+r.width/2-(box.x+12+(box.width-24)*parseFloat(t.style.left)/100))}});
+ });
+ expect(aligned.find(t=>t.zero).hidden).toBe(true);
+ for(const tick of aligned.filter(t=>!t.hidden))expect(tick.error).toBeLessThan(.1);
+ for(const stop of [0,4]){
+  await clickRatio(page,stop/4);
+  await expect(s).toHaveAttribute('aria-valuenow',String(stop));
+  await expect(s).toHaveAttribute('data-dsh-thought-settling','false');
+  const d=await s.evaluate((s,stop)=>{const r=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();return {center:k.x+k.width/2,expected:stop===0?r.x+12:r.right-12}},stop);
+  expect(Math.abs(d.center-d.expected)).toBeLessThan(.1);
+ }
 });
 test('MTL preview paints synchronously without host React work per move',async({page})=>{
  const box=await drag(page,.25,.38);
@@ -87,7 +104,7 @@ test('MTL thumb continuously follows small movements within the same stop interv
  const positions=[];
  for(const ratio of [.36,.37,.38,.39,.40]){
   await page.mouse.move(box.x+box.width*ratio,box.y+box.height/2);
-  positions.push(await page.locator('.bre-effort-slider').evaluate(s=>{const r=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();return (k.x+k.width/2-r.x)/r.width}));
+  positions.push(await page.locator('.bre-effort-slider').evaluate(s=>{const r=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();return (k.x+k.width/2-r.x-12)/(r.width-24)}));
  }
  for(let i=0;i<positions.length;i++)expect(positions[i]).toBeCloseTo(.36+i*.01,3);
  expect(new Set(positions).size).toBe(5);
@@ -111,7 +128,7 @@ test('MTL grabbing the edge of a thumb preserves its initial position',async({pa
 
 test('MTL click paints immediately and retains the chosen stop through a slow commit',async({page})=>{
  await page.evaluate(()=>{delay=300});
- const r=await page.locator('.bre-effort-slider').boundingBox();
+ const r=await travelBox(page.locator('.bre-effort-slider'));
  await page.mouse.move(r.x+r.width*.74,r.y+r.height/2);await page.mouse.down();
  await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress','75%');
  await expect(page.locator('.bre-effort-slider-head-value')).toHaveText('Level 3');
@@ -122,7 +139,7 @@ test('MTL click paints immediately and retains the chosen stop through a slow co
  expect(await page.evaluate(()=>calls.length)).toBe(1);
 });
 
-async function clickRatio(page,ratio){const b=await page.locator('.bre-effort-slider').boundingBox();await page.mouse.click(b.x+b.width*ratio,b.y+b.height/2)}
+async function clickRatio(page,ratio){const b=await travelBox(page.locator('.bre-effort-slider'));await page.mouse.click(b.x+b.width*ratio,b.y+b.height/2)}
 
 test('MTL rapid busy clicks keep the latest intent and submit it after unlocking',async({page})=>{
  await page.evaluate(()=>{delay=500});
@@ -183,7 +200,7 @@ test('MTL continues across foreign pointer capture and release outside the slide
 test('MTL a fresh gesture recovers a missed release with a different pointer id',async({page})=>{
  await page.locator('.bre-effort-slider').evaluate(s=>{
   const p=s.querySelector('.zcode-thought-pointer'),b=s.getBoundingClientRect();
-  const fire=(type,id,ratio)=>p.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:id,isPrimary:true,button:0,buttons:type==='pointerup'?0:1,clientX:b.x+b.width*ratio,clientY:b.y+b.height/2}));
+  const fire=(type,id,ratio)=>p.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:id,isPrimary:true,button:0,buttons:type==='pointerup'?0:1,clientX:b.x+12+(b.width-24)*ratio,clientY:b.y+b.height/2}));
   fire('pointerdown',42,.25);fire('pointermove',42,.4);
   fire('pointerdown',43,.25);fire('pointermove',43,.9);fire('pointerup',43,.9);
  });
@@ -218,21 +235,21 @@ test('MTL synchronizes while held and serializes the latest reversed stop',async
 test('MTL click and release have a small damped rebound while dragging stays direct',async({page})=>{
  const s=page.locator('.bre-effort-slider');
  await clickRatio(page,1);
- const positions=await s.evaluate(async s=>{const a=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x)/b.width)}return a});
+ const positions=await s.evaluate(async s=>{const a=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x-12)/(b.width-24))}return a});
  expect(positions[0]).toBeLessThan(.98);expect(positions[0]).toBeGreaterThanOrEqual(.5);
  expect(positions.at(-1)).toBeCloseTo(1,3);
- expect(Math.max(...positions)).toBeGreaterThan(1.002);expect(Math.max(...positions)).toBeLessThan(1.015);
+ expect(Math.max(...positions)).toBeGreaterThan(1.009);expect(Math.max(...positions)).toBeLessThan(1.015);
  expect(positions.indexOf(Math.max(...positions))).toBeLessThan(positions.length-3);
  await drag(page,.25,.6);await page.mouse.up();
- const snapped=await s.evaluate(async s=>{const a=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x)/b.width)}return a});
+ const snapped=await s.evaluate(async s=>{const a=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x-12)/(b.width-24))}return a});
  expect(snapped[0]).toBeLessThan(.745);expect(snapped.at(-1)).toBeCloseTo(.75,3);
- expect(Math.max(...snapped)).toBeGreaterThan(.7505);expect(Math.max(...snapped)).toBeLessThan(.757);
+ expect(Math.max(...snapped)).toBeGreaterThan(.7525);expect(Math.max(...snapped)).toBeLessThan(.757);
 });
 
 test('MTL leftward clicks rebound gently and settle at the exact lower stop',async({page})=>{
  await clickRatio(page,0);
- const positions=await page.locator('.bre-effort-slider').evaluate(async s=>{const a=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x)/b.width)}return a});
- expect(Math.min(...positions)).toBeLessThan(-.002);expect(Math.min(...positions)).toBeGreaterThan(-.015);
+ const positions=await page.locator('.bre-effort-slider').evaluate(async s=>{const a=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x-12)/(b.width-24))}return a});
+ expect(Math.min(...positions)).toBeLessThan(-.009);expect(Math.min(...positions)).toBeGreaterThan(-.015);
  expect(positions.at(-1)).toBeCloseTo(0,3);
  await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','0');
  expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e0']);
@@ -296,15 +313,17 @@ test('MTL click interpolates track hues together with the thumb',async({page})=>
 test('MTL full-length colors and effects stay fixed while the mask follows dragging and spring settling',async({page})=>{
  const s=page.locator('.bre-effort-slider');
  const measure=async s=>{
+  const probe=document.createElement('span');probe.style.cssText='position:absolute;height:0;padding:0;border:0';s.querySelector('.zcode-thought-fill').appendChild(probe);
   const read=()=>{
    const track=s.getBoundingClientRect(),fill=s.querySelector('.zcode-thought-fill'),box=fill.getBoundingClientRect();
    const knob=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();
-   const values=getComputedStyle(fill).clipPath.slice(6,-1).split(/\s+/),right=values[1]||values[0];
-   const inset=parseFloat(right)*(right.endsWith('%')?box.width/100:1);
+   const clip=getComputedStyle(fill).clipPath;
+   probe.style.width=clip.match(/^inset\(0px (.+) 0px 0px\)$/)?.[1]||'0px';
+   const inset=probe.getBoundingClientRect().width;
    return {width:box.width,trackWidth:track.width,effectsWidth:parseFloat(getComputedStyle(fill.querySelector('.zcode-thought-bubbles')).width),
     edge:Math.max(track.left,Math.min(track.right,box.right-inset)),knob:Math.max(track.left,Math.min(track.right,knob.x+knob.width/2))};
   };
-  const frames=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);frames.push(read())}return frames;
+  const frames=[];for(let i=0;i<28;i++){await new Promise(requestAnimationFrame);frames.push(read())}probe.remove();return frames;
  };
  await clickRatio(page,1);
  const frames=await s.evaluate(measure);

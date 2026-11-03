@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { build } from 'esbuild';
+import { travelBox } from './geometry.mjs';
 import { readFile } from 'node:fs/promises';
 const fixture = await readFile(new URL('./fixtures/slider.html', import.meta.url), 'utf8');
 const engine = await readFile(new URL('../src/engine.js', import.meta.url), 'utf8');
@@ -19,7 +20,7 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }) => { expect(page.errors).toEqual([]); });
 
 async function drag(page, from, to) {
-  const box = await page.locator('input').boundingBox();
+  const box = await travelBox(page.locator('input'));
   await page.mouse.move(box.x + box.width * from, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * to, box.y + box.height / 2, { steps: 8 });
@@ -74,7 +75,7 @@ test('uninstall during a drag cancels selection without submitting', async ({ pa
 });
 
 test('touch gestures use the same weighted stops and commit once', async ({ page, context }) => {
-  const box = await page.locator('input').boundingBox();
+  const box = await travelBox(page.locator('input'));
   const session = await context.newCDPSession(page);
   const point = ratio => [{ x: box.x + box.width * ratio, y: box.y + box.height / 2, id: 1 }];
   await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(.25) });
@@ -115,7 +116,7 @@ test('pointer preview paints in the same event and does not scan the document on
     const original = document.querySelectorAll;
     document.querySelectorAll = function (...args) { scans++; return original.apply(this, args); };
     // Playwright mouse uses pointer id 1 in Chromium; preserve a physical gesture.
-    surface.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: box.left + box.width * .6, clientY: box.top, buttons: 1 }));
+    surface.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: box.left + 12 + (box.width - 24) * .6, clientY: box.top, buttons: 1 }));
     const progress = document.querySelector('.bre-effort-slider').style.getPropertyValue('--dsh-thought-progress');
     document.querySelectorAll = original;
     return { progress, scans };
