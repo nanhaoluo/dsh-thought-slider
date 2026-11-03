@@ -8,7 +8,7 @@
   'use strict';
   if (!root) return;
   if (root.__DSH_THOUGHT_SLIDER__) {
-    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.7') return;
+    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.8') return;
     root.__DSH_THOUGHT_SLIDER__.uninstall();
   }
 
@@ -149,8 +149,8 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   transition: none !important;
   animation: none !important;
 }
-.bre-effort-slider[data-dsh-thought-settling="true"] :is(.bre-effort-slider-thumb, .bre-effort-knob) { transition: left 120ms ease-out !important; }
-.bre-effort-slider[data-dsh-thought-settling="true"] .zcode-thought-fill { transition: width 120ms ease-out; }
+.bre-effort-slider[data-dsh-thought-settling="true"] :is(.bre-effort-slider-thumb, .bre-effort-knob) { transition: left 180ms cubic-bezier(.22,.7,.22,1) !important; }
+.bre-effort-slider[data-dsh-thought-settling="true"] .zcode-thought-fill { transition: width 180ms cubic-bezier(.22,.7,.22,1); }
 .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::before,
 .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::after {
   display: none !important;
@@ -289,7 +289,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   var observerOptions = {
     childList: true, subtree: true, characterData: true, attributes: true,
     attributeFilter: ['style', 'class', 'aria-valuenow', 'aria-valuemin',
-      'aria-valuemax', 'aria-valuetext', 'aria-disabled', 'min', 'max', 'step', 'disabled', 'value']
+      'aria-valuemax', 'aria-valuetext', 'aria-disabled', 'data-bre-dragging', 'min', 'max', 'step', 'disabled', 'value']
   };
 
   function gradientForProgress(progress) {
@@ -352,15 +352,25 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     var media = root.matchMedia ? root.matchMedia('(prefers-reduced-motion: reduce)') : null;
     var activeGlow = false, disposed = false;
     var animations = [];
-    function point() { return { transform: 'translate(' + randomBetween(-12, 12) + '%, ' + randomBetween(-8, 8) + '%) scale(' + randomBetween(1.02, 1.16) + ') rotate(' + randomBetween(-4, 4) + 'deg)', opacity: randomBetween(.45, .7), easing: 'ease-in-out' }; }
+    function point(previous, index, reverse) {
+      var direction = previous ? (reverse ? -previous.direction : (Math.random() < .5 ? -1 : 1)) : (Math.random() < .5 ? -1 : 1);
+      var x = previous ? previous.x + direction * randomBetween(17, 29) : [-46, 0, 46][index] + randomBetween(-5, 5);
+      if (x < -65 || x > 65) { direction *= -1; x = previous.x + direction * randomBetween(17, 29); }
+      var y = previous ? Math.max(-24, Math.min(24, previous.y + randomBetween(-12, 12))) : randomBetween(-12, 12);
+      return { x: x, y: y, direction: direction, frame: {
+        transform: 'translate(' + x + '%, ' + y + '%) scale(' + randomBetween(.94, 1.14) + ', ' + randomBetween(.9, 1.18) + ') rotate(' + randomBetween(-12, 12) + 'deg)',
+        opacity: randomBetween(.52, .82), easing: 'ease-in-out'
+      } };
+    }
     function sync() { animations.forEach(function (animation) { if (activeGlow && !(media && media.matches)) animation.play(); else animation.pause(); }); }
     function cycle(node, index, previous, old) {
       if (disposed || !node.animate) return;
-      var frames = [previous || point(), point(), point(), point(), point()];
-      var animation = node.animate(frames, { duration: randomBetween(18000, 30000), easing: 'linear', fill: 'forwards' });
+      var points = [previous || point(null, index)];
+      for (var i = 1; i < 5; i++) points.push(point(points[i - 1], index, i === 3));
+      var animation = node.animate(points.map(function (p) { return p.frame; }), { duration: randomBetween(10000, 16000), easing: 'linear', fill: 'forwards' });
       animations[index] = animation;
       if (old) old.cancel();
-      animation.onfinish = function () { cycle(node, index, frames[frames.length - 1], animation); };
+      animation.onfinish = function () { cycle(node, index, points[points.length - 1], animation); };
       sync();
     }
     nodes.forEach(function (node, index) { cycle(node, index); });
@@ -387,10 +397,10 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
       shadowStyle.textContent = '.zcode-thought-particles{position:absolute;inset:0;overflow:hidden;border-radius:inherit;corner-shape:round}' + motionCss;
       particles = document.createElement('div');
       particles.className = 'zcode-thought-particles';
-      shadowStyle.textContent += '.zcode-thought-glow{position:absolute;left:-40%;top:-200%;width:180%;height:500%;pointer-events:none;filter:blur(12px);background:linear-gradient(115deg,transparent 0%,rgba(99,102,241,.05) 15%,rgba(139,92,246,.7) 35%,rgba(192,132,252,.85) 48%,rgba(99,102,241,.4) 62%,transparent 82%)}.zcode-thought-glow.second{background:radial-gradient(ellipse at 45% 65%,rgba(165,180,252,.8) 0%,rgba(124,58,237,.65) 28%,rgba(59,130,246,.3) 52%,transparent 78%)}';
+      shadowStyle.textContent += '.zcode-thought-glow{position:absolute;left:15%;top:-80%;width:70%;height:260%;pointer-events:none;filter:blur(6px);background:radial-gradient(ellipse at 50% 50%,rgba(202,170,255,.95) 0%,rgba(139,92,246,.75) 18%,rgba(99,102,241,.3) 48%,transparent 72%)}.zcode-thought-glow.second{background:radial-gradient(ellipse at 50% 50%,rgba(160,188,255,.92) 0%,rgba(79,70,229,.7) 22%,transparent 68%)}.zcode-thought-glow.third{background:linear-gradient(115deg,transparent 12%,rgba(124,58,237,.25) 30%,rgba(208,171,255,.85) 48%,rgba(99,102,241,.3) 65%,transparent 82%)}';
       shadow.appendChild(shadowStyle);
-      var glows = [document.createElement('div'), document.createElement('div')];
-      glows.forEach(function (node, i) { node.className = 'zcode-thought-glow' + (i ? ' second' : ''); shadow.appendChild(node); });
+      var glows = [document.createElement('div'), document.createElement('div'), document.createElement('div')];
+      glows.forEach(function (node, i) { node.className = 'zcode-thought-glow' + (i === 1 ? ' second' : i === 2 ? ' third' : ''); shadow.appendChild(node); });
       shadow.appendChild(particles);
       fill.__dshMotion = createGlowMotion(glows);
     }
@@ -492,33 +502,46 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     var canQueue = legacy && !!slider.closest('.bre-menu-slider');
     function contextKey() { var node = slider.closest('.bre-card'); node = node && node.querySelector('.bre-menu-name'); return node ? (node.getAttribute('aria-label') || node.textContent) : ''; }
     function disabled() { return input.disabled || input.getAttribute('aria-disabled') === 'true'; }
+    // MTL releases its busy flag before the preceding promise clears its preview.
+    function hostSaving() { return disabled() || (canQueue && slider.getAttribute('data-bre-dragging') === 'true'); }
     var surface = document.createElement('div');
     surface.className = 'zcode-thought-pointer';
     surface.setAttribute('aria-hidden', 'true');
-    var drag = null, pending = null, pendingTimer = null, snapTimer = null, snapTarget = null;
-    var api = { input: input, surface: surface, progress: null, dragging: false, dispose: dispose, cancel: cancel, sync: sync };
+    // A disabled host may set pointer-events:none; local MTL intent must still arrive.
+    surface.style.setProperty('pointer-events', 'auto', 'important');
+    var drag = null, pending = null, pendingTimer = null, snapTimer = null, snapTarget = null, liveTimer = null;
+    var api = { input: input, surface: surface, progress: null, level: null, dragging: false, dispose: dispose, cancel: cancel, sync: sync };
 
     function stopSnap() {
       if (snapTimer !== null) root.clearTimeout(snapTimer);
       snapTimer = null; snapTarget = null;
       setAttribute(slider, 'data-dsh-thought-settling', 'false');
     }
+    function settle(target) {
+      stopSnap(); snapTarget = target;
+      setAttribute(slider, 'data-dsh-thought-settling', 'true');
+      snapTimer = root.setTimeout(stopSnap, 180);
+    }
+    function stopLive() { if (liveTimer !== null) root.clearTimeout(liveTimer); liveTimer = null; }
     function stopPending(restoreHeader) {
       if (pendingTimer !== null) root.clearTimeout(pendingTimer);
       pendingTimer = null;
       if (restoreHeader && pending && pending.header && pending.header.textContent === pending.previewName) pending.header.textContent = pending.savedHeader;
       pending = null;
-      if (!drag) api.progress = null;
+      if (!drag) { api.progress = null; api.level = null; }
     }
     function armPendingTimer() {
       if (pendingTimer !== null) root.clearTimeout(pendingTimer);
-      pendingTimer = root.setTimeout(function () { stopPending(true); if (active && slider.isConnected) refreshSlider(slider); }, pending && pending.queued ? 11000 : 1000);
+      pendingTimer = root.setTimeout(function expire() {
+        if (pending && hostSaving() && Date.now() < pending.deadline) { pendingTimer = root.setTimeout(expire, 250); return; }
+        stopPending(true); if (active && slider.isConnected) refreshSlider(slider);
+      }, pending && pending.queued ? 11000 : 1000);
     }
     function sync(value) {
-      if (drag) return;
+      if (legacy && drag && drag.header && drag.names[drag.index] && drag.header.textContent !== drag.names[drag.index]) drag.header.textContent = drag.names[drag.index];
       if (pending && (pending.count !== stopCount(input) || pending.context !== contextKey())) { stopPending(true); stopSnap(); return; }
       if (pending && pending.queued) {
-        if (disabled()) return;
+        if (hostSaving()) return;
         if (Math.abs(value.progress - pending.progress) < 1e-6) { stopPending(false); return; }
         pending.queued = false;
         var gesture = { bounds: input.getBoundingClientRect(), forwardId: --pointerSequence, pointerType: pending.pointerType };
@@ -527,8 +550,8 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
         armPendingTimer();
         return;
       }
-      if (pending && Math.abs(value.progress - pending.progress) < 1e-6) stopPending(false);
-      if (!pending && snapTarget !== null && Math.abs(value.progress - snapTarget) > 1e-6) stopSnap();
+      if (pending && !hostSaving() && Math.abs(value.progress - pending.progress) < 1e-6) stopPending(false);
+      if (!drag && !pending && snapTarget !== null && Math.abs(value.progress - snapTarget) > 1e-6) stopSnap();
     }
     function forward(type, progress, original, gesture) {
       gesture = gesture || drag;
@@ -558,12 +581,33 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     }
     function preview(progress, index) {
       api.progress = progress;
+      api.level = index / drag.count;
       paintSlider(slider, state, progress);
       if (legacy && drag.header && drag.names[index]) drag.header.textContent = drag.names[index];
     }
+    function submit(event) {
+      var target = drag.index / drag.count;
+      pending = { progress: target, header: drag.header, savedHeader: drag.savedHeader,
+        previewName: drag.names && drag.names[drag.index], count: drag.count, context: contextKey(), pointerType: drag.pointerType, deadline: Date.now() + 11000, queued: canQueue && hostSaving() };
+      if (!pending.queued) { if (legacy) forward('pointerdown', target, event); forward('pointerup', target, event); }
+      armPendingTimer();
+    }
+    function scheduleLive() {
+      if (!canQueue) return;
+      // Coalesce crossings within a frame burst; the host still serializes saves.
+      stopLive();
+      liveTimer = root.setTimeout(function () {
+        liveTimer = null;
+        if (!drag || !active || !slider.isConnected) return;
+        submit();
+        refreshSlider(slider);
+      }, 80);
+    }
     function down(event) {
       if (disabled() && !canQueue) { event.preventDefault(); event.stopPropagation(); return; }
-      if (drag || event.button !== 0 || event.isPrimary === false) return;
+      if (event.button !== 0 || event.isPrimary === false) { event.stopPropagation(); return; }
+      // A foreign capture handler may have swallowed the previous release.
+      if (drag) cancel();
       var count = stopCount(input), bounds = input.getBoundingClientRect();
       if (!Number.isInteger(count) || count < 1 || count > 1000 || bounds.width <= 0) return;
       event.preventDefault(); event.stopPropagation();
@@ -582,40 +626,42 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
         drag.savedHeader = drag.header && drag.header.textContent;
         drag.names = Array.from(slider.parentElement.querySelectorAll('.bre-effort-slider-label')).map(function (node) { return node.textContent; });
       }
-      surface.setPointerCapture(event.pointerId);
+      try { surface.setPointerCapture(event.pointerId); } catch (_) { /* Window listeners cover unavailable capture. */ }
       drag.index = stopIndex(event);
+      if (!grabbed) settle(drag.index / count);
       preview(grabbed ? current : drag.index / count, drag.index);
       if (!legacy) forward('pointerdown', drag.index / count, event);
     }
     function move(event) {
       if (!drag || event.pointerId !== drag.id) return;
       event.preventDefault(); event.stopPropagation();
+      if (event.buttons === 0 && event.type === 'pointermove') { finish(event); return; }
       if ((disabled() && !canQueue) || !input.isConnected || stopCount(input) !== drag.count) { cancel(); return; }
-      if (Math.abs(event.clientX - drag.startX) >= 3) drag.moved = true;
+      if (Math.abs(event.clientX - drag.startX) >= 3) { drag.moved = true; stopSnap(); }
       var index = stopIndex(event), changed = index !== drag.index;
       drag.index = index;
       // Position is continuous; only the title/host preview uses discrete levels.
       preview(drag.moved ? ratio(event) : (drag.grabbed ? ratio(event) : index / drag.count), index);
       if (changed && !legacy) forward('pointermove', index / drag.count, event);
+      if (changed) scheduleLive();
     }
     function releaseCapture() {
       var id = drag.id;
       drag = null; api.dragging = false;
-      if (surface.hasPointerCapture(id)) surface.releasePointerCapture(id);
+      try { if (surface.hasPointerCapture(id)) surface.releasePointerCapture(id); } catch (_) { /* Detached/replaced input. */ }
     }
     function finish(event) {
       if (!drag || event.pointerId !== drag.id) return;
-      move(event); if (!drag) return;
+      // A button-less move is a recovered release, not another recursive move.
+      if (event.type !== 'pointermove') move(event);
+      if (!drag) return;
+      event.preventDefault(); event.stopPropagation(); stopLive();
       var target = drag.index / drag.count;
       if (drag.moved && Math.abs(api.progress - target) > 1e-6) {
-        snapTarget = target;
-        setAttribute(slider, 'data-dsh-thought-settling', 'true');
-        snapTimer = root.setTimeout(stopSnap, 120);
+        settle(target);
       }
-      pending = { progress: target, header: drag.header, savedHeader: drag.savedHeader,
-        previewName: drag.names && drag.names[drag.index], count: drag.count, context: contextKey(), pointerType: drag.pointerType, queued: canQueue && disabled() };
       preview(target, drag.index);
-      if (!pending.queued) { if (legacy) forward('pointerdown', target, event); forward('pointerup', target, event); }
+      submit(event);
       releaseCapture();
       // Keep the local result until React acknowledges it; never flash the old stop.
       armPendingTimer();
@@ -623,30 +669,33 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     }
     function cancel(event) {
       if (!drag || (event && event.pointerId !== undefined && event.pointerId !== drag.id)) return;
+      if (event && event.pointerId !== undefined) { event.preventDefault(); event.stopPropagation(); }
       if (!legacy) forward('pointercancel', drag.index / drag.count);
       if (legacy && drag.header) drag.header.textContent = drag.savedHeader;
       var previousPending = drag.previousPending;
-      releaseCapture(); stopPending(false); stopSnap();
+      stopLive(); releaseCapture(); stopPending(false); stopSnap();
       if (previousPending) { pending = previousPending; api.progress = pending.progress; armPendingTimer(); }
       queueMicrotask(function () { if (active && slider.isConnected) refreshSlider(slider); if (menuNeedsPlacement) requestMenuPlacement(); });
     }
     function dispose() {
       cancel(); stopPending(true); stopSnap();
+      root.removeEventListener('pointermove', move, true); root.removeEventListener('pointerup', finish, true); root.removeEventListener('pointercancel', cancel, true);
       root.removeEventListener('blur', cancel); root.removeEventListener('resize', cancel); surface.remove();
     }
-    surface.addEventListener('pointerdown', down); surface.addEventListener('pointermove', move);
-    surface.addEventListener('pointerup', finish); surface.addEventListener('pointercancel', cancel);
-    surface.addEventListener('lostpointercapture', cancel);
+    surface.addEventListener('pointerdown', down);
+    // Capture-phase fallbacks survive capture theft or release outside the menu.
+    root.addEventListener('pointermove', move, true); root.addEventListener('pointerup', finish, true); root.addEventListener('pointercancel', cancel, true);
     root.addEventListener('blur', cancel); root.addEventListener('resize', cancel);
     return api;
   }
 
   function paintSlider(slider, state, progress) {
-    setAttribute(slider, maxMarker, progress === 1 ? 'true' : 'false');
-    setAttribute(state.fill.querySelector('.zcode-thought-bubbles'), 'data-running', progress === 1 ? 'true' : 'false');
-    if (state.fill.__dshMotion) state.fill.__dshMotion.update(progress === 1);
+    var level = state.pointer && state.pointer.level !== null ? state.pointer.level : progress;
+    setAttribute(slider, maxMarker, level === 1 ? 'true' : 'false');
+    setAttribute(state.fill.querySelector('.zcode-thought-bubbles'), 'data-running', level === 1 ? 'true' : 'false');
+    if (state.fill.__dshMotion) state.fill.__dshMotion.update(level === 1);
     setStyle(slider, state, '--dsh-thought-progress', String(progress * 100) + '%');
-    setStyle(slider, state, '--dsh-thought-gradient', gradientForProgress(progress));
+    setStyle(slider, state, '--dsh-thought-gradient', gradientForProgress(level));
     updatePresentation(slider, state, progress);
   }
 
@@ -875,7 +924,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   }
 
   root.__DSH_THOUGHT_SLIDER__ = {
-    version: '1.0.7', install: install, uninstall: uninstall,
+    version: '1.0.8', install: install, uninstall: uninstall,
     scanAndHarmonize: scanAndHarmonize, CSS: SLIDER_CSS
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

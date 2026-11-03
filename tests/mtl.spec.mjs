@@ -155,3 +155,94 @@ test('MTL cancelling a new gesture preserves the previously queued click',async(
  await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');
  expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e1','e3']);
 });
+
+test('MTL remains interactive under a foreign disabled pointer-events rule',async({page})=>{
+ await page.addStyleTag({content:'[aria-disabled="true"]{pointer-events:none!important}'});
+ await page.evaluate(()=>{delay=500});
+ await clickRatio(page,.25);
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-disabled','true');
+ await clickRatio(page,.75);
+ await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress','75%');
+ await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');
+ expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e1','e3']);
+});
+
+test('MTL continues across foreign pointer capture and release outside the slider',async({page})=>{
+ const b=await drag(page,.25,.4);
+ await page.evaluate(()=>document.body.setPointerCapture(1));
+ await page.mouse.move(b.x+b.width*.9,b.y+b.height/2);
+ expect(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(s.style.getPropertyValue('--dsh-thought-progress')))).toBeCloseTo(90,3);
+ await page.mouse.up();
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','4');
+ await clickRatio(page,.25);
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','1');
+ expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e4','e1']);
+});
+
+test('MTL a fresh gesture recovers a missed release with a different pointer id',async({page})=>{
+ await page.locator('.bre-effort-slider').evaluate(s=>{
+  const p=s.querySelector('.zcode-thought-pointer'),b=s.getBoundingClientRect();
+  const fire=(type,id,ratio)=>p.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:id,isPrimary:true,button:0,buttons:type==='pointerup'?0:1,clientX:b.x+b.width*ratio,clientY:b.y+b.height/2}));
+  fire('pointerdown',42,.25);fire('pointermove',42,.4);
+  fire('pointerdown',43,.25);fire('pointermove',43,.9);fire('pointerup',43,.9);
+ });
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','4');
+ expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e4']);
+});
+
+test('MTL highest intent starts aurora before the thumb reaches the endpoint',async({page})=>{
+ const b=await drag(page,.5,.92);
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('data-dsh-thought-max','true');
+ await expect(page.locator('.bre-effort-slider-head-value')).toHaveText('Level 4');
+ expect(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(s.style.getPropertyValue('--dsh-thought-progress')))).toBeCloseTo(92,3);
+ await page.mouse.move(b.x+b.width*.75,b.y+b.height/2);
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('data-dsh-thought-max','false');
+ await page.mouse.up();
+});
+
+test('MTL synchronizes while held and serializes the latest reversed stop',async({page})=>{
+ await page.evaluate(()=>{delay=500});const b=await drag(page,.5,.92);
+ await expect.poll(()=>page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e4']);
+ await page.mouse.move(b.x+b.width*.05,b.y+b.height/2,{steps:4});
+ expect(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(s.style.getPropertyValue('--dsh-thought-progress')))).toBeCloseTo(5,3);
+ await expect(page.locator('.bre-effort-slider-head-value')).toHaveText('Level 0');
+ await expect.poll(()=>page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e4','e0']);
+ await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');
+ expect(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(s.style.getPropertyValue('--dsh-thought-progress')))).toBeCloseTo(5,3);
+ await page.mouse.up();
+ await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress','0%');
+ expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e4','e0']);
+});
+
+test('MTL click and release animate toward a stop while dragging stays direct',async({page})=>{
+ const s=page.locator('.bre-effort-slider');
+ await clickRatio(page,1);
+ const positions=await s.evaluate(async s=>{const a=[];for(let i=0;i<16;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x)/b.width)}return a});
+ expect(positions[0]).toBeLessThan(.98);expect(positions[0]).toBeGreaterThanOrEqual(.5);
+ expect(positions.at(-1)).toBeCloseTo(1,3);
+ expect(positions.every((v,i)=>!i||v>=positions[i-1]-.001)).toBe(true);
+ await drag(page,.25,.6);await page.mouse.up();
+ const snapped=await s.evaluate(async s=>{const a=[];for(let i=0;i<16;i++){await new Promise(requestAnimationFrame);const b=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();a.push((k.x+k.width/2-b.x)/b.width)}return a});
+ expect(snapped[0]).toBeLessThan(.745);expect(snapped.at(-1)).toBeCloseTo(.75,3);
+});
+
+test('MTL twelve rapid reversals all paint their intent and persist the last one',async({page})=>{
+ await page.evaluate(()=>{delay=500});
+ for(const index of [1,3,0,4,0,2,1,4,1,0,3,1]){
+  await clickRatio(page,index/4);
+  await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress',index*25+'%');
+ }
+ await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','1');
+ expect((await page.evaluate(()=>calls.at(-1))).reasoningEffort).toBe('e1');
+});
+
+test('MTL waits for the preceding optimistic preview to clear before handing off',async({page})=>{
+ await page.evaluate(()=>{delay=350});await clickRatio(page,.25);await clickRatio(page,.75);
+ await page.locator('.bre-effort-slider').evaluate(s=>s.removeAttribute('aria-disabled'));
+ // Other plugins can remove the disabled flag before MTL clears its own preview.
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('data-bre-dragging','true');
+ await expect.poll(()=>page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e1','e3']);
+ await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('data-bre-dragging','true');
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','3');
+});

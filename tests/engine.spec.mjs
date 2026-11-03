@@ -362,7 +362,11 @@ test('cool gradients evolve gradually and max glow follows random continuous pat
  const glow=page.locator('#modern .zcode-thought-glow').first();
  const data=await glow.evaluate(node=>{const a=node.getAnimations()[0];return {frames:a.effect.getKeyframes().map(f=>f.transform),duration:a.effect.getTiming().duration,state:a.playState}});
  expect(data.frames).toHaveLength(5);expect(new Set(data.frames).size).toBe(5);
- expect(data.duration).toBeGreaterThanOrEqual(18000);expect(data.duration).toBeLessThanOrEqual(30000);expect(data.state).toBe('running');
+ const xs=data.frames.map(f=>Number(/translate\((-?[\d.]+)%/.exec(f)[1]));
+ const steps=xs.slice(1).map((x,i)=>x-xs[i]);
+ expect(steps.some(x=>x>0)).toBe(true);expect(steps.some(x=>x<0)).toBe(true);
+ expect(Math.max(...xs)-Math.min(...xs)).toBeGreaterThan(17);
+ expect(data.duration).toBeGreaterThanOrEqual(10000);expect(data.duration).toBeLessThanOrEqual(16000);expect(data.state).toBe('running');
  const continuity=await glow.evaluate(async node=>{const old=node.getAnimations()[0],frames=old.effect.getKeyframes(),end=frames[frames.length-1].transform;old.finish();await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);const next=node.getAnimations()[0];return {different:next!==old,start:next.effect.getKeyframes()[0].transform,end}});
  expect(continuity.different).toBe(true);expect(continuity.start).toBe(continuity.end);
  await page.evaluate(()=>setHostProgress(3));
