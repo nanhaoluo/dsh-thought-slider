@@ -8,7 +8,7 @@
   'use strict';
   if (!root) return;
   if (root.__DSH_THOUGHT_SLIDER__) {
-    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.6') return;
+    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.7') return;
     root.__DSH_THOUGHT_SLIDER__.uninstall();
   }
 
@@ -352,12 +352,12 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     var media = root.matchMedia ? root.matchMedia('(prefers-reduced-motion: reduce)') : null;
     var activeGlow = false, disposed = false;
     var animations = [];
-    function point() { return { transform: 'translate(' + randomBetween(-16, 16) + '%, ' + randomBetween(-12, 12) + '%) scale(' + randomBetween(.96, 1.18) + ') rotate(' + randomBetween(-7, 7) + 'deg)', opacity: randomBetween(.48, .88), easing: 'ease-in-out' }; }
+    function point() { return { transform: 'translate(' + randomBetween(-12, 12) + '%, ' + randomBetween(-8, 8) + '%) scale(' + randomBetween(1.02, 1.16) + ') rotate(' + randomBetween(-4, 4) + 'deg)', opacity: randomBetween(.45, .7), easing: 'ease-in-out' }; }
     function sync() { animations.forEach(function (animation) { if (activeGlow && !(media && media.matches)) animation.play(); else animation.pause(); }); }
     function cycle(node, index, previous, old) {
       if (disposed || !node.animate) return;
       var frames = [previous || point(), point(), point(), point(), point()];
-      var animation = node.animate(frames, { duration: randomBetween(4200, 7200), easing: 'linear', fill: 'forwards' });
+      var animation = node.animate(frames, { duration: randomBetween(18000, 30000), easing: 'linear', fill: 'forwards' });
       animations[index] = animation;
       if (old) old.cancel();
       animation.onfinish = function () { cycle(node, index, frames[frames.length - 1], animation); };
@@ -387,7 +387,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
       shadowStyle.textContent = '.zcode-thought-particles{position:absolute;inset:0;overflow:hidden;border-radius:inherit;corner-shape:round}' + motionCss;
       particles = document.createElement('div');
       particles.className = 'zcode-thought-particles';
-      shadowStyle.textContent += '.zcode-thought-glow{position:absolute;left:-30%;top:-150%;width:160%;height:400%;pointer-events:none;filter:blur(7px);background:radial-gradient(ellipse at 30% 55%,#6366f1 0%,#8b5cf6 30%,transparent 65%)}.zcode-thought-glow.second{background:radial-gradient(ellipse at 65% 45%,#c4b5fd 0%,#7c3aed 28%,#3b82f6 55%,transparent 78%)}';
+      shadowStyle.textContent += '.zcode-thought-glow{position:absolute;left:-40%;top:-200%;width:180%;height:500%;pointer-events:none;filter:blur(12px);background:linear-gradient(115deg,transparent 0%,rgba(99,102,241,.05) 15%,rgba(139,92,246,.7) 35%,rgba(192,132,252,.85) 48%,rgba(99,102,241,.4) 62%,transparent 82%)}.zcode-thought-glow.second{background:radial-gradient(ellipse at 45% 65%,rgba(165,180,252,.8) 0%,rgba(124,58,237,.65) 28%,rgba(59,130,246,.3) 52%,transparent 78%)}';
       shadow.appendChild(shadowStyle);
       var glows = [document.createElement('div'), document.createElement('div')];
       glows.forEach(function (node, i) { node.className = 'zcode-thought-glow' + (i ? ' second' : ''); shadow.appendChild(node); });
@@ -875,7 +875,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   }
 
   root.__DSH_THOUGHT_SLIDER__ = {
-    version: '1.0.6', install: install, uninstall: uninstall,
+    version: '1.0.7', install: install, uninstall: uninstall,
     scanAndHarmonize: scanAndHarmonize, CSS: SLIDER_CSS
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
