@@ -1,11 +1,16 @@
 /**
  * Visual enhancement for current and legacy dsh-better-reasoning-effort sliders.
- * The host owns selection, pointer/keyboard handling and progress. Never rewrite
+ * The host owns selection, keyboard handling and progress. Pointer coordinates
+ * are snapped to its declared stops before forwarding. Never rewrite
  * its positions or range values: those are also inputs to its next render.
  */
 (function (root) {
   'use strict';
-  if (!root || root.__DSH_THOUGHT_SLIDER__) return;
+  if (!root) return;
+  if (root.__DSH_THOUGHT_SLIDER__) {
+    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.1') return;
+    root.__DSH_THOUGHT_SLIDER__.uninstall();
+  }
 
   var BUBBLE_SPEC = [
     { top: 2, size: 2, duration: 2.6, delay: -0.4 },
@@ -91,9 +96,20 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   position: absolute !important;
   box-sizing: border-box !important;
   top: 50% !important;
-  left: clamp(12px, var(--dsh-thought-progress), calc(100% - 12px)) !important;
+  left: var(--dsh-thought-progress) !important;
   width: 24px !important;
   height: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  aspect-ratio: 1 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  flex: none !important;
+  overflow: hidden !important;
+  scale: none !important;
+  rotate: none !important;
   border: 0 !important;
   border-radius: 50% !important;
   transform: translate(-50%, -50%) !important;
@@ -102,7 +118,21 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   pointer-events: none !important;
   z-index: 4 !important;
   transition: none !important;
+  animation: none !important;
 }
+.bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::before,
+.bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::after {
+  display: none !important;
+}
+.bre-effort-slider[data-dsh-thought-slider] .zcode-thought-pointer {
+  position: absolute;
+  inset: -8px -12px;
+  z-index: 6;
+  touch-action: none;
+  cursor: grab;
+}
+.bre-effort-slider[data-dsh-thought-slider] .zcode-thought-pointer:active { cursor: grabbing; }
+.bre-effort-slider[data-dsh-thought-slider]:has(input:disabled) .zcode-thought-pointer { pointer-events: none; }
 .bre-effort-slider[data-dsh-thought-slider] .bre-effort-input {
   z-index: 5 !important;
 }
@@ -161,6 +191,7 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   var styleElement = null;
   var observer = null;
   var frame = null;
+  var pointerSequence = -1000;
   var active = false;
   var sliders = new Map();
   var labels = new Map();
@@ -169,7 +200,7 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   var observerOptions = {
     childList: true, subtree: true, characterData: true, attributes: true,
     attributeFilter: ['style', 'class', 'aria-valuenow', 'aria-valuemin',
-      'aria-valuemax', 'min', 'max', 'value']
+      'aria-valuemax', 'min', 'max', 'step', 'disabled', 'value']
   };
 
   function gradientForProgress(pct) {
@@ -260,6 +291,7 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   }
 
   function restoreSlider(slider, state) {
+    if (state.pointer) state.pointer.dispose();
     state.fill.remove();
     state.attributes.forEach(function (value, name) {
       if (value === null) slider.removeAttribute(name);
@@ -285,6 +317,166 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
     labels.delete(label);
   }
 
+  function createPointer(slider, input, state) {
+    var surface = document.createElement('div');
+    surface.className = 'zcode-thought-pointer';
+    surface.setAttribute('aria-hidden', 'true');
+    var drag = null;
+    var api = { input: input, surface: surface, progress: null, dispose: dispose, cancel: cancel };
+
+    function forward(type, progress, original) {
+      var bounds = input.getBoundingClientRect();
+      input.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, composed: true,
+        pointerId: drag.forwardId, pointerType: drag.pointerType, isPrimary: true,
+        button: 0, buttons: type === 'pointerup' || type === 'pointercancel' ? 0 : 1,
+        clientX: bounds.left + bounds.width * progress,
+        clientY: original ? original.clientY : bounds.top + bounds.height / 2
+      }));
+    }
+
+    function stopIndex(event) {
+      var delta = event.clientX - drag.lastX;
+      // Ignore subpixel pointer jitter but remember the last real direction.
+      if (Math.abs(delta) >= 1) {
+        // Smooth the recent movement vector so a tiny reverse movement at
+        // release does not outweigh the rest of the gesture.
+        drag.recentVector = drag.recentVector * 0.5 + delta;
+        drag.lastX = event.clientX;
+      }
+      var raw = Math.max(0, Math.min(drag.count, (event.clientX - drag.bounds.left) / drag.bounds.width * drag.count));
+      var nearest = Math.round(raw);
+      if (Math.abs(raw - nearest) < 1e-6) return nearest;
+      var interval = drag.bounds.width / drag.count;
+      var clamp = function (value) { return Math.max(-1, Math.min(1, value)); };
+      var overall = clamp((event.clientX - drag.startX) / interval);
+      var recent = clamp(drag.recentVector / (interval * 0.25));
+      // Three votes for the upper of the two neighbouring stops. Distance is
+      // primary (55%), start-to-release displacement 30%, recent vector 15%.
+      // With no movement the two vector votes are neutral: click = nearest.
+      var lower = Math.floor(raw);
+      var vote = 0.55 * (raw - lower) + 0.30 * (overall + 1) / 2 + 0.15 * (recent + 1) / 2;
+      return lower + (vote >= 0.5 ? 1 : 0);
+    }
+
+    function preview(index) {
+      api.progress = index / drag.count;
+      paintSlider(slider, state, api.progress);
+    }
+
+    function down(event) {
+      if (drag || event.button !== 0 || event.isPrimary === false || input.disabled) return;
+      var count = stopCount(input);
+      var bounds = input.getBoundingClientRect();
+      if (!Number.isFinite(count) || count < 1 || count > 1000 || !Number.isInteger(count) || bounds.width <= 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      drag = { id: event.pointerId, forwardId: --pointerSequence, pointerType: event.pointerType,
+        count: count, bounds: bounds, recentVector: 0, startX: event.clientX, lastX: event.clientX, index: -1 };
+      surface.setPointerCapture(event.pointerId);
+      drag.index = stopIndex(event);
+      preview(drag.index);
+      // A distinct pointer id keeps the host's window capture listeners from
+      // processing the unsnapped physical gesture as well as this forwarded one.
+      forward('pointerdown', api.progress, event);
+    }
+
+    function move(event) {
+      if (!drag || event.pointerId !== drag.id) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (input.disabled || !input.isConnected || stopCount(input) !== drag.count) { cancel(); return; }
+      var index = stopIndex(event);
+      if (index === drag.index) return;
+      drag.index = index;
+      preview(index);
+      forward('pointermove', api.progress, event);
+    }
+
+    function finish(event) {
+      if (!drag || event.pointerId !== drag.id) return;
+      move(event);
+      if (!drag) return;
+      forward('pointerup', api.progress, event);
+      clear();
+    }
+
+    function clear() {
+      var id = drag.id;
+      drag = null;
+      api.progress = null;
+      if (surface.hasPointerCapture(id)) surface.releasePointerCapture(id);
+      // Host state, including refusal/rollback, is authoritative after release.
+      queueMicrotask(function () { if (active && slider.isConnected) refreshSlider(slider); });
+    }
+
+    function cancel(event) {
+      if (!drag || (event && event.pointerId !== undefined && event.pointerId !== drag.id)) return;
+      forward('pointercancel', api.progress);
+      clear();
+    }
+
+    function dispose() {
+      cancel();
+      root.removeEventListener('blur', cancel);
+      root.removeEventListener('resize', cancel);
+      surface.remove();
+    }
+
+    surface.addEventListener('pointerdown', down);
+    surface.addEventListener('pointermove', move);
+    surface.addEventListener('pointerup', finish);
+    surface.addEventListener('pointercancel', cancel);
+    surface.addEventListener('lostpointercapture', cancel);
+    root.addEventListener('blur', cancel);
+    root.addEventListener('resize', cancel);
+    return api;
+  }
+
+  function paintSlider(slider, state, progress) {
+    setAttribute(slider, maxMarker, progress === 1 ? 'true' : 'false');
+    setStyle(slider, state, '--dsh-thought-progress', String(progress * 100) + '%');
+    setStyle(slider, state, '--dsh-thought-gradient', gradientForProgress(progress));
+  }
+
+  function stopCount(input) {
+    return (numericAttribute(input, 'max', 100) - numericAttribute(input, 'min', 0)) / numericAttribute(input, 'step', 1);
+  }
+
+  function syncPointer(slider, state) {
+    var input = slider.querySelector('input.bre-effort-input[type="range"]');
+    var count = input ? stopCount(input) : NaN;
+    if (!Number.isInteger(count) || count < 1 || count > 1000) input = null;
+    if (state.pointer && state.pointer.input !== input) { state.pointer.dispose(); state.pointer = null; }
+    if (input && !state.pointer) state.pointer = createPointer(slider, input, state);
+    if (state.pointer) {
+      if (input.disabled) state.pointer.cancel();
+      if (state.pointer.surface.parentNode !== slider) slider.appendChild(state.pointer.surface);
+    }
+  }
+
+  function refreshSlider(slider) {
+    var state = sliders.get(slider);
+    if (!state) return;
+    var value = readSlider(slider);
+    if (!value) { restoreSlider(slider, state); return; }
+    syncPointer(slider, state);
+    paintSlider(slider, state, state.pointer && state.pointer.progress !== null ? state.pointer.progress : value.progress);
+  }
+
+  function updateMutations(records) {
+    var changed = new Set();
+    records.forEach(function (record) {
+      if (!relevantMutation(record)) return;
+      // Structural changes need discovery/cleanup. Progress writes need only
+      // the affected control, synchronously in this pre-paint microtask.
+      if (record.type !== 'attributes' || record.attributeName === 'class') { scheduleScan(); return; }
+      var slider = record.target.closest('.bre-effort-slider');
+      if (slider && sliders.has(slider)) changed.add(slider);
+    });
+    changed.forEach(refreshSlider);
+  }
+
   function harmonizeSlider(slider, value) {
     var state = sliders.get(slider);
     if (!state) {
@@ -295,12 +487,11 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
       };
       sliders.set(slider, state);
     }
+    syncPointer(slider, state);
     // A host rerender can replace children without replacing the slider itself.
     if (state.fill.parentNode !== slider) slider.appendChild(state.fill);
     setAttribute(slider, marker, value.kind);
-    setAttribute(slider, maxMarker, value.progress === 1 ? 'true' : 'false');
-    setStyle(slider, state, '--dsh-thought-progress', String(value.progress * 100) + '%');
-    setStyle(slider, state, '--dsh-thought-gradient', gradientForProgress(value.progress));
+    paintSlider(slider, state, state.pointer && state.pointer.progress !== null ? state.pointer.progress : value.progress);
   }
 
   function scanAndHarmonize() {
@@ -352,7 +543,8 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   }
 
   function onInput(event) {
-    if (event.target.matches && event.target.matches('.bre-effort-input')) scheduleScan();
+    var slider = event.target.closest && event.target.closest('.bre-effort-slider');
+    if (slider && sliders.has(slider)) refreshSlider(slider);
   }
 
   function onReady() {
@@ -366,7 +558,7 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
     }
     if (!observer && typeof MutationObserver !== 'undefined' && document.body) {
       observer = new MutationObserver(function (records) {
-        if (records.some(relevantMutation)) scheduleScan();
+        updateMutations(records);
       });
     }
     scanAndHarmonize();
@@ -398,7 +590,7 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   }
 
   root.__DSH_THOUGHT_SLIDER__ = {
-    version: '1.0.0', install: install, uninstall: uninstall,
+    version: '1.0.1', install: install, uninstall: uninstall,
     scanAndHarmonize: scanAndHarmonize, CSS: SLIDER_CSS
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
