@@ -291,6 +291,27 @@ test('ticks join the leftward particles at maximum and return linearly from the 
   }
 });
 
+test('a host-created rightmost tick cannot enter before its stagger delay is installed', async ({ page }) => {
+  await page.setContent(fixture);
+  await page.locator('#legacy').evaluate(s => {
+    s.querySelector('[style*="left: 100%"].bre-effort-slider-tick').remove();
+    for (const value of [20,40,60,80]) s.insertAdjacentHTML('beforeend', `<span class="bre-effort-slider-tick" style="left: ${value}%"></span>`);
+  });
+  await page.addScriptTag({ content: engineSource });
+  await page.evaluate(() => window.__DSH_THOUGHT_SLIDER__.install());
+  const result = await page.locator('#legacy').evaluate(async s => {
+    s.querySelector('.bre-effort-slider-thumb').style.left = '0%';
+    window.__DSH_THOUGHT_SLIDER__.scanAndHarmonize();
+    const tick = document.createElement('span');tick.className = 'bre-effort-slider-tick';tick.style.left = '100%';s.appendChild(tick);
+    // A foreign observer can force initial styling before our discovery frame.
+    const before = Number(getComputedStyle(tick).opacity);
+    await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);
+    const delays = tick.getAnimations().map(a => a.effect.getTiming().delay);
+    return {before,delays};
+  });
+  expect(result.before).toBe(0);expect(result.delays).toEqual([140,140]);
+});
+
 test('reduced motion removes tick flights and restores ticks immediately', async ({ page }) => {
   await page.setContent(fixture);
   await page.locator('#legacy').evaluate(s => s.insertAdjacentHTML('beforeend', '<span class="bre-effort-slider-tick" style="left: 50%"></span>'));

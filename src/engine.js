@@ -213,10 +213,15 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   background: rgba(255, 255, 255, .45) !important;
   pointer-events: none !important;
   z-index: 2 !important;
-  opacity: .9 !important;
+  opacity: 0 !important;
   translate: var(--dsh-thought-tick-offset, 0px) !important;
-  transform: translateX(0) !important;
+  transform: translateX(12px) !important;
   transition: opacity 180ms linear var(--dsh-thought-tick-delay, 0ms), transform 180ms linear var(--dsh-thought-tick-delay, 0ms) !important;
+}
+/* A host-created tick stays hidden until its own stagger delay is installed. */
+.bre-effort-slider[data-dsh-thought-slider] .bre-effort-slider-tick:where([style*="--dsh-thought-tick-delay:"]) {
+  opacity: .9 !important;
+  transform: translateX(0) !important;
 }
 .bre-effort-slider[data-dsh-thought-slider] .bre-effort-slider-tick:is([style*="left: 0%"], [style*="left:0%"], [style*="left: 0px"], [style*="left:0px"]) { display: none !important; }
 .bre-effort-slider[data-dsh-thought-max="true"] .bre-effort-slider-tick {
@@ -573,9 +578,9 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     state.ticks.forEach(function (entry, tick) { if (!slider.contains(tick)) { restoreDecoration(entry); state.ticks.delete(tick); } });
     slider.querySelectorAll('.bre-effort-slider-tick').forEach(function (tick) {
       var position = percentage(tick.style.left);
-      if (position === null) return;
       if (!state.ticks.has(tick)) state.ticks.set(tick, { node: tick, original: tick.getAttribute('style'), css: tick.style.cssText, state: { styles: new Map() } });
       var entry = state.ticks.get(tick);
+      if (position === null) { setStyle(tick, entry.state, '--dsh-thought-tick-delay', '0ms'); return; }
       if (entry.position !== position) { entry.position = position; state.ticksDirty = true; }
       setStyle(tick, entry.state, '--dsh-thought-tick-offset', String(END_INSET * (1 - 2 * position)) + 'px');
       setStyle(tick, entry.state, '--dsh-thought-tick-delay', Math.round(position * 140) + 'ms');
