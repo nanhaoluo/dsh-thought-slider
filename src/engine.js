@@ -1,14 +1,14 @@
 /**
  * Visual enhancement for current and legacy dsh-better-reasoning-effort sliders.
  * The host owns selection, keyboard handling and progress. Pointer coordinates
- * are snapped to its declared stops before forwarding. Never rewrite
+ * follow the pointer continuously and are snapped to declared stops on release. Never rewrite
  * its positions or range values: those are also inputs to its next render.
  */
 (function (root) {
   'use strict';
   if (!root) return;
   if (root.__DSH_THOUGHT_SLIDER__) {
-    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.5') return;
+    if (root.__DSH_THOUGHT_SLIDER__.version === '1.0.6') return;
     root.__DSH_THOUGHT_SLIDER__.uninstall();
   }
 
@@ -149,6 +149,8 @@ body:not([data-ds-dark-theme]) .bre-effort-slider[data-dsh-thought-slider] {
   transition: none !important;
   animation: none !important;
 }
+.bre-effort-slider[data-dsh-thought-settling="true"] :is(.bre-effort-slider-thumb, .bre-effort-knob) { transition: left 120ms ease-out !important; }
+.bre-effort-slider[data-dsh-thought-settling="true"] .zcode-thought-fill { transition: width 120ms ease-out; }
 .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::before,
 .bre-effort-slider[data-dsh-thought-slider] :is(.bre-effort-slider-thumb, .bre-effort-knob)::after {
   display: none !important;
@@ -290,11 +292,10 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
       'aria-valuemax', 'aria-valuetext', 'aria-disabled', 'min', 'max', 'step', 'disabled', 'value']
   };
 
-  function gradientForProgress(pct) {
-    if (pct === 1) return 'linear-gradient(90deg, #10b981 0%, #06b6d4 30%, #3b82f6 65%, #8b5cf6 88%, #a855f7 100%)';
-    if (pct >= .65) return 'linear-gradient(90deg, #10b981 0%, #06b6d4 35%, #0ea5e9 70%, #3b82f6 100%)';
-    if (pct >= .35) return 'linear-gradient(90deg, #10b981 0%, #06b6d4 60%, #0ea5e9 100%)';
-    return 'linear-gradient(90deg, #10b981 0%, #14b8a6 100%)';
+  function gradientForProgress(progress) {
+    var start = 194 + progress * 24;
+    var end = 210 + progress * 34;
+    return 'linear-gradient(100deg, hsl(' + start + ', 86%, 51%), hsl(' + end + ', 88%, 61%))';
   }
 
   function percentage(value) {
@@ -347,6 +348,29 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     state.styles.get(name).applied = element.style.getPropertyValue(name);
   }
 
+  function createGlowMotion(nodes) {
+    var media = root.matchMedia ? root.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    var activeGlow = false, disposed = false;
+    var animations = [];
+    function point() { return { transform: 'translate(' + randomBetween(-16, 16) + '%, ' + randomBetween(-12, 12) + '%) scale(' + randomBetween(.96, 1.18) + ') rotate(' + randomBetween(-7, 7) + 'deg)', opacity: randomBetween(.48, .88), easing: 'ease-in-out' }; }
+    function sync() { animations.forEach(function (animation) { if (activeGlow && !(media && media.matches)) animation.play(); else animation.pause(); }); }
+    function cycle(node, index, previous, old) {
+      if (disposed || !node.animate) return;
+      var frames = [previous || point(), point(), point(), point(), point()];
+      var animation = node.animate(frames, { duration: randomBetween(4200, 7200), easing: 'linear', fill: 'forwards' });
+      animations[index] = animation;
+      if (old) old.cancel();
+      animation.onfinish = function () { cycle(node, index, frames[frames.length - 1], animation); };
+      sync();
+    }
+    nodes.forEach(function (node, index) { cycle(node, index); });
+    if (media && media.addEventListener) media.addEventListener('change', sync);
+    return {
+      update: function (value) { if (activeGlow !== value) { activeGlow = value; sync(); } },
+      dispose: function () { disposed = true; animations.forEach(function (animation) { animation.onfinish = null; animation.cancel(); }); if (media && media.removeEventListener) media.removeEventListener('change', sync); }
+    };
+  }
+
   function createFill() {
     var fill = document.createElement('div');
     fill.className = 'zcode-thought-fill';
@@ -363,7 +387,12 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
       shadowStyle.textContent = '.zcode-thought-particles{position:absolute;inset:0;overflow:hidden;border-radius:inherit;corner-shape:round}' + motionCss;
       particles = document.createElement('div');
       particles.className = 'zcode-thought-particles';
-      shadow.append(shadowStyle, particles);
+      shadowStyle.textContent += '.zcode-thought-glow{position:absolute;left:-30%;top:-150%;width:160%;height:400%;pointer-events:none;filter:blur(7px);background:radial-gradient(ellipse at 30% 55%,#6366f1 0%,#8b5cf6 30%,transparent 65%)}.zcode-thought-glow.second{background:radial-gradient(ellipse at 65% 45%,#c4b5fd 0%,#7c3aed 28%,#3b82f6 55%,transparent 78%)}';
+      shadow.appendChild(shadowStyle);
+      var glows = [document.createElement('div'), document.createElement('div')];
+      glows.forEach(function (node, i) { node.className = 'zcode-thought-glow' + (i ? ' second' : ''); shadow.appendChild(node); });
+      shadow.appendChild(particles);
+      fill.__dshMotion = createGlowMotion(glows);
     }
     function particle(index, stagger) {
       var bubble = document.createElement('span');
@@ -431,6 +460,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   function restoreSlider(slider, state) {
     if (state.pointer) state.pointer.dispose();
     restoreKnob(state);
+    if (state.fill.__dshMotion) state.fill.__dshMotion.dispose();
     state.fill.remove();
     if (state.presentation) state.presentation.nodes.forEach(function (node) { node.remove(); });
     state.attributes.forEach(function (value, name) {
@@ -459,64 +489,94 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
 
   function createPointer(slider, input, state) {
     var legacy = input === slider;
+    var canQueue = legacy && !!slider.closest('.bre-menu-slider');
+    function contextKey() { var node = slider.closest('.bre-card'); node = node && node.querySelector('.bre-menu-name'); return node ? (node.getAttribute('aria-label') || node.textContent) : ''; }
     function disabled() { return input.disabled || input.getAttribute('aria-disabled') === 'true'; }
     var surface = document.createElement('div');
     surface.className = 'zcode-thought-pointer';
     surface.setAttribute('aria-hidden', 'true');
-    var drag = null;
-    var api = { input: input, surface: surface, progress: null, dispose: dispose, cancel: cancel };
+    var drag = null, pending = null, pendingTimer = null, snapTimer = null, snapTarget = null;
+    var api = { input: input, surface: surface, progress: null, dragging: false, dispose: dispose, cancel: cancel, sync: sync };
 
-    function forward(type, progress, original) {
-      var bounds = input.getBoundingClientRect();
+    function stopSnap() {
+      if (snapTimer !== null) root.clearTimeout(snapTimer);
+      snapTimer = null; snapTarget = null;
+      setAttribute(slider, 'data-dsh-thought-settling', 'false');
+    }
+    function stopPending(restoreHeader) {
+      if (pendingTimer !== null) root.clearTimeout(pendingTimer);
+      pendingTimer = null;
+      if (restoreHeader && pending && pending.header && pending.header.textContent === pending.previewName) pending.header.textContent = pending.savedHeader;
+      pending = null;
+      if (!drag) api.progress = null;
+    }
+    function armPendingTimer() {
+      if (pendingTimer !== null) root.clearTimeout(pendingTimer);
+      pendingTimer = root.setTimeout(function () { stopPending(true); if (active && slider.isConnected) refreshSlider(slider); }, pending && pending.queued ? 11000 : 1000);
+    }
+    function sync(value) {
+      if (drag) return;
+      if (pending && (pending.count !== stopCount(input) || pending.context !== contextKey())) { stopPending(true); stopSnap(); return; }
+      if (pending && pending.queued) {
+        if (disabled()) return;
+        if (Math.abs(value.progress - pending.progress) < 1e-6) { stopPending(false); return; }
+        pending.queued = false;
+        var gesture = { bounds: input.getBoundingClientRect(), forwardId: --pointerSequence, pointerType: pending.pointerType };
+        forward('pointerdown', pending.progress, null, gesture);
+        forward('pointerup', pending.progress, null, gesture);
+        armPendingTimer();
+        return;
+      }
+      if (pending && Math.abs(value.progress - pending.progress) < 1e-6) stopPending(false);
+      if (!pending && snapTarget !== null && Math.abs(value.progress - snapTarget) > 1e-6) stopSnap();
+    }
+    function forward(type, progress, original, gesture) {
+      gesture = gesture || drag;
+      var bounds = gesture.bounds;
       input.dispatchEvent(new PointerEvent(type, {
         bubbles: true, cancelable: true, composed: true,
-        pointerId: drag.forwardId, pointerType: drag.pointerType, isPrimary: true,
+        pointerId: gesture.forwardId, pointerType: gesture.pointerType, isPrimary: true,
         button: 0, buttons: type === 'pointerup' || type === 'pointercancel' ? 0 : 1,
         clientX: bounds.left + bounds.width * progress,
         clientY: original ? original.clientY : bounds.top + bounds.height / 2
       }));
     }
-
+    function ratio(event) { return Math.max(0, Math.min(1, (event.clientX - drag.offset - drag.bounds.left) / drag.bounds.width)); }
     function stopIndex(event) {
       var delta = event.clientX - drag.lastX;
-      // Ignore subpixel pointer jitter but remember the last real direction.
-      if (Math.abs(delta) >= 1) {
-        // Smooth the recent movement vector so a tiny reverse movement at
-        // release does not outweigh the rest of the gesture.
-        drag.recentVector = drag.recentVector * 0.5 + delta;
-        drag.lastX = event.clientX;
-      }
-      var raw = Math.max(0, Math.min(drag.count, (event.clientX - drag.bounds.left) / drag.bounds.width * drag.count));
+      if (Math.abs(delta) >= 1) { drag.recentVector = drag.recentVector * .5 + delta; drag.lastX = event.clientX; }
+      var raw = ratio(event) * drag.count;
       var nearest = Math.round(raw);
-      if (Math.abs(raw - nearest) < 1e-6) return nearest;
+      if (!drag.moved || Math.abs(raw - nearest) < 1e-6) return nearest;
       var interval = drag.bounds.width / drag.count;
       var clamp = function (value) { return Math.max(-1, Math.min(1, value)); };
       var overall = clamp((event.clientX - drag.startX) / interval);
-      var recent = clamp(drag.recentVector / (interval * 0.25));
-      // Three votes for the upper of the two neighbouring stops. Distance is
-      // primary (55%), start-to-release displacement 30%, recent vector 15%.
-      // With no movement the two vector votes are neutral: click = nearest.
+      var recent = clamp(drag.recentVector / (interval * .25));
       var lower = Math.floor(raw);
-      var vote = 0.55 * (raw - lower) + 0.30 * (overall + 1) / 2 + 0.15 * (recent + 1) / 2;
-      return lower + (vote >= 0.5 ? 1 : 0);
+      var vote = .55 * (raw - lower) + .30 * (overall + 1) / 2 + .15 * (recent + 1) / 2;
+      return lower + (vote >= .5 ? 1 : 0);
     }
-
-    function preview(index) {
-      api.progress = index / drag.count;
-      paintSlider(slider, state, api.progress);
+    function preview(progress, index) {
+      api.progress = progress;
+      paintSlider(slider, state, progress);
       if (legacy && drag.header && drag.names[index]) drag.header.textContent = drag.names[index];
     }
-
     function down(event) {
-      if (disabled()) { event.preventDefault(); event.stopPropagation(); return; }
+      if (disabled() && !canQueue) { event.preventDefault(); event.stopPropagation(); return; }
       if (drag || event.button !== 0 || event.isPrimary === false) return;
-      var count = stopCount(input);
-      var bounds = input.getBoundingClientRect();
-      if (!Number.isFinite(count) || count < 1 || count > 1000 || !Number.isInteger(count) || bounds.width <= 0) return;
-      event.preventDefault();
-      event.stopPropagation();
+      var count = stopCount(input), bounds = input.getBoundingClientRect();
+      if (!Number.isInteger(count) || count < 1 || count > 1000 || bounds.width <= 0) return;
+      event.preventDefault(); event.stopPropagation();
+      var knobRect = state.knob.node.getBoundingClientRect();
+      var center = knobRect.left + knobRect.width / 2;
+      var current = Math.max(0, Math.min(1, (center - bounds.left) / bounds.width));
+      var previousPending = pending;
+      stopSnap(); stopPending(false);
+      var grabbed = Math.abs(event.clientX - center) <= 14;
       drag = { id: event.pointerId, forwardId: --pointerSequence, pointerType: event.pointerType,
-        count: count, bounds: bounds, recentVector: 0, startX: event.clientX, lastX: event.clientX, index: -1 };
+        count: count, bounds: bounds, recentVector: 0, startX: event.clientX, lastX: event.clientX,
+        offset: grabbed ? event.clientX - center : 0, grabbed: grabbed, moved: false, index: -1, previousPending: previousPending };
+      api.dragging = true;
       if (legacy) {
         drag.header = slider.parentElement.querySelector('.bre-effort-slider-head-value');
         drag.savedHeader = drag.header && drag.header.textContent;
@@ -524,69 +584,67 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
       }
       surface.setPointerCapture(event.pointerId);
       drag.index = stopIndex(event);
-      preview(drag.index);
-      // A distinct pointer id keeps the host's window capture listeners from
-      // processing the unsnapped physical gesture as well as this forwarded one.
-      if (!legacy) forward('pointerdown', api.progress, event);
+      preview(grabbed ? current : drag.index / count, drag.index);
+      if (!legacy) forward('pointerdown', drag.index / count, event);
     }
-
     function move(event) {
       if (!drag || event.pointerId !== drag.id) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (disabled() || !input.isConnected || stopCount(input) !== drag.count) { cancel(); return; }
-      var index = stopIndex(event);
-      if (index === drag.index) return;
+      event.preventDefault(); event.stopPropagation();
+      if ((disabled() && !canQueue) || !input.isConnected || stopCount(input) !== drag.count) { cancel(); return; }
+      if (Math.abs(event.clientX - drag.startX) >= 3) drag.moved = true;
+      var index = stopIndex(event), changed = index !== drag.index;
       drag.index = index;
-      preview(index);
-      if (!legacy) forward('pointermove', api.progress, event);
+      // Position is continuous; only the title/host preview uses discrete levels.
+      preview(drag.moved ? ratio(event) : (drag.grabbed ? ratio(event) : index / drag.count), index);
+      if (changed && !legacy) forward('pointermove', index / drag.count, event);
     }
-
+    function releaseCapture() {
+      var id = drag.id;
+      drag = null; api.dragging = false;
+      if (surface.hasPointerCapture(id)) surface.releasePointerCapture(id);
+    }
     function finish(event) {
       if (!drag || event.pointerId !== drag.id) return;
-      move(event);
-      if (!drag) return;
-      if (legacy) forward('pointerdown', api.progress, event);
-      forward('pointerup', api.progress, event);
-      clear();
-    }
-
-    function clear() {
-      var id = drag.id;
-      if (legacy && drag.header) drag.header.textContent = drag.savedHeader;
-      drag = null;
-      api.progress = null;
-      if (surface.hasPointerCapture(id)) surface.releasePointerCapture(id);
-      // Host state, including refusal/rollback, is authoritative after release.
+      move(event); if (!drag) return;
+      var target = drag.index / drag.count;
+      if (drag.moved && Math.abs(api.progress - target) > 1e-6) {
+        snapTarget = target;
+        setAttribute(slider, 'data-dsh-thought-settling', 'true');
+        snapTimer = root.setTimeout(stopSnap, 120);
+      }
+      pending = { progress: target, header: drag.header, savedHeader: drag.savedHeader,
+        previewName: drag.names && drag.names[drag.index], count: drag.count, context: contextKey(), pointerType: drag.pointerType, queued: canQueue && disabled() };
+      preview(target, drag.index);
+      if (!pending.queued) { if (legacy) forward('pointerdown', target, event); forward('pointerup', target, event); }
+      releaseCapture();
+      // Keep the local result until React acknowledges it; never flash the old stop.
+      armPendingTimer();
       queueMicrotask(function () { if (active && slider.isConnected) refreshSlider(slider); if (menuNeedsPlacement) requestMenuPlacement(); });
     }
-
     function cancel(event) {
       if (!drag || (event && event.pointerId !== undefined && event.pointerId !== drag.id)) return;
-      if (!legacy) forward('pointercancel', api.progress);
-      clear();
+      if (!legacy) forward('pointercancel', drag.index / drag.count);
+      if (legacy && drag.header) drag.header.textContent = drag.savedHeader;
+      var previousPending = drag.previousPending;
+      releaseCapture(); stopPending(false); stopSnap();
+      if (previousPending) { pending = previousPending; api.progress = pending.progress; armPendingTimer(); }
+      queueMicrotask(function () { if (active && slider.isConnected) refreshSlider(slider); if (menuNeedsPlacement) requestMenuPlacement(); });
     }
-
     function dispose() {
-      cancel();
-      root.removeEventListener('blur', cancel);
-      root.removeEventListener('resize', cancel);
-      surface.remove();
+      cancel(); stopPending(true); stopSnap();
+      root.removeEventListener('blur', cancel); root.removeEventListener('resize', cancel); surface.remove();
     }
-
-    surface.addEventListener('pointerdown', down);
-    surface.addEventListener('pointermove', move);
-    surface.addEventListener('pointerup', finish);
-    surface.addEventListener('pointercancel', cancel);
+    surface.addEventListener('pointerdown', down); surface.addEventListener('pointermove', move);
+    surface.addEventListener('pointerup', finish); surface.addEventListener('pointercancel', cancel);
     surface.addEventListener('lostpointercapture', cancel);
-    root.addEventListener('blur', cancel);
-    root.addEventListener('resize', cancel);
+    root.addEventListener('blur', cancel); root.addEventListener('resize', cancel);
     return api;
   }
 
   function paintSlider(slider, state, progress) {
     setAttribute(slider, maxMarker, progress === 1 ? 'true' : 'false');
     setAttribute(state.fill.querySelector('.zcode-thought-bubbles'), 'data-running', progress === 1 ? 'true' : 'false');
+    if (state.fill.__dshMotion) state.fill.__dshMotion.update(progress === 1);
     setStyle(slider, state, '--dsh-thought-progress', String(progress * 100) + '%');
     setStyle(slider, state, '--dsh-thought-gradient', gradientForProgress(progress));
     updatePresentation(slider, state, progress);
@@ -636,7 +694,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     if (state.pointer && state.pointer.input !== input) { state.pointer.dispose(); state.pointer = null; }
     if (input && !state.pointer) state.pointer = createPointer(slider, input, state);
     if (state.pointer) {
-      if (input.disabled || input.getAttribute('aria-disabled') === 'true') state.pointer.cancel();
+      if (input.disabled || (input !== slider && input.getAttribute('aria-disabled') === 'true')) state.pointer.cancel();
       if (state.pointer.surface.parentNode !== slider) slider.appendChild(state.pointer.surface);
     }
   }
@@ -647,8 +705,9 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     if (!slider.isConnected) { restoreSlider(slider, state); return; }
     var value = readSlider(slider);
     if (!value) { restoreSlider(slider, state); return; }
-    syncGeometry(slider, state);
+    if (!state.pointer || !state.pointer.dragging) syncGeometry(slider, state);
     syncPointer(slider, state);
+    if (state.pointer) state.pointer.sync(value);
     paintSlider(slider, state, state.pointer && state.pointer.progress !== null ? state.pointer.progress : value.progress);
   }
 
@@ -672,7 +731,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
       state = {
         fill: createFill(), styles: new Map(),
         originalStyle: slider.getAttribute('style'), originalCss: slider.style.cssText,
-        attributes: new Map([[marker, slider.getAttribute(marker)], [maxMarker, slider.getAttribute(maxMarker)]])
+        attributes: new Map([[marker, slider.getAttribute(marker)], [maxMarker, slider.getAttribute(maxMarker)], ['data-dsh-thought-settling', slider.getAttribute('data-dsh-thought-settling')]])
       };
       sliders.set(slider, state);
     }
@@ -689,7 +748,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
     menuFrame = root.requestAnimationFrame(function () {
       menuFrame = null;
       var dragging = false;
-      sliders.forEach(function (state) { if (state.pointer && state.pointer.progress !== null) dragging = true; });
+      sliders.forEach(function (state) { if (state.pointer && state.pointer.dragging) dragging = true; });
       if (active && menuNeedsPlacement && !dragging) {
         menuNeedsPlacement = false;
         root.dispatchEvent(new Event('resize'));
@@ -816,7 +875,7 @@ body[data-ds-dark-theme] .zcode-thought-caption-value { color: var(--dsw-alias-l
   }
 
   root.__DSH_THOUGHT_SLIDER__ = {
-    version: '1.0.5', install: install, uninstall: uninstall,
+    version: '1.0.6', install: install, uninstall: uninstall,
     scanAndHarmonize: scanAndHarmonize, CSS: SLIDER_CSS
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

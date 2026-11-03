@@ -120,6 +120,6 @@ test('pointer preview paints in the same event and does not scan the document on
     document.querySelectorAll = original;
     return { progress, scans };
   });
-  expect(result).toEqual({ progress: '75%', scans: 0 });
+  expect(result).toEqual({ progress: '60%', scans: 0 });
   await page.mouse.up();
 });

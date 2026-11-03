@@ -15,7 +15,7 @@ test.afterEach(async({page})=>expect(page.errors).toEqual([]));
 async function drag(page,from,to){const r=await page.locator('.bre-effort-slider').boundingBox();await page.mouse.move(r.x+r.width*from,r.y+r.height/2);await page.mouse.down();await page.mouse.move(r.x+r.width*to,r.y+r.height/2,{steps:8});return r;}
 for(const [from,to,index] of [[.25,.6,3],[.75,.6,2],[.5,1,4]])test(`MTL real handlers snap ${from} to ${to} and submit once`,async({page})=>{
  if(index===2){await page.locator('.bre-effort-slider').focus();await page.keyboard.press('End');await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','4');await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');await page.evaluate(()=>{calls.length=0})}
- await drag(page,from,to);await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress',index*25+'%');
+ await drag(page,from,to);expect(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(s.style.getPropertyValue('--dsh-thought-progress')))).toBeCloseTo(to*100,3);
  await expect(page.locator('.bre-effort-slider-head-value')).toHaveText('Level '+index);
  expect(await page.evaluate(()=>calls.length)).toBe(0);
  await page.mouse.up();await expect.poll(()=>page.evaluate(()=>calls.length)).toBe(1);
@@ -48,7 +48,7 @@ test('MTL preview paints synchronously without host React work per move',async({
  const d=await page.evaluate(box=>{const s=document.querySelector('.bre-effort-slider'),p=s.querySelector('.zcode-thought-pointer');let scans=0;const original=document.querySelectorAll;document.querySelectorAll=function(...args){scans++;return original.apply(this,args)};
  p.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:1,buttons:1,clientX:box.x+box.width*.6,clientY:box.y}));
  const value=s.style.getPropertyValue('--dsh-thought-progress');document.querySelectorAll=original;return {value,scans,calls:calls.length};},box);
- expect(d).toEqual({value:'75%',scans:0,calls:0});await page.mouse.up();
+ expect(d).toEqual({value:'60%',scans:0,calls:0});await page.mouse.up();
 });
 
 
@@ -68,7 +68,7 @@ test('foreign footer resizing during a drag cannot cancel the gesture',async({pa
  await page.locator('.bre-menu-foot').evaluate(el=>el.style.setProperty('padding-bottom','15px','important'));
  await page.evaluate(async()=>{await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame)});
  await page.mouse.move(box.x+box.width*.6,box.y+box.height/2,{steps:4});
- await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress','75%');
+ expect(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(s.style.getPropertyValue('--dsh-thought-progress')))).toBeCloseTo(60,3);
  await page.mouse.up();await expect.poll(()=>page.evaluate(()=>calls.length)).toBe(1);
  expect(await page.evaluate(()=>calls[0].reasoningEffort)).toBe('e3');
 });
@@ -79,4 +79,79 @@ test('foreign menu restorers cannot display duplicate host cells over the model 
  await expect(page.getByText('old host cell')).toBeHidden();
  await expect(page.locator('.bre-provider').first()).toBeVisible();
  await expect(page.locator('.bre-option').first()).toBeVisible();
+});
+
+test('MTL thumb continuously follows small movements within the same stop interval',async({page})=>{
+ const box=await drag(page,.25,.35);
+ const positions=[];
+ for(const ratio of [.36,.37,.38,.39,.40]){
+  await page.mouse.move(box.x+box.width*ratio,box.y+box.height/2);
+  positions.push(await page.locator('.bre-effort-slider').evaluate(s=>{const r=s.getBoundingClientRect(),k=s.querySelector('.bre-effort-slider-thumb').getBoundingClientRect();return (k.x+k.width/2-r.x)/r.width}));
+ }
+ for(let i=0;i<positions.length;i++)expect(positions[i]).toBeCloseTo(.36+i*.01,3);
+ expect(new Set(positions).size).toBe(5);
+ expect(await page.evaluate(()=>calls.length)).toBe(0);
+ await page.mouse.up();
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-valuenow','2');
+ await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress','50%');
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('data-dsh-thought-settling','false');
+});
+
+test('MTL grabbing the edge of a thumb preserves its initial position',async({page})=>{
+ const box=await page.locator('.bre-effort-slider-thumb').boundingBox();
+ await page.mouse.move(box.x+3,box.y+box.height/2);await page.mouse.down();
+ expect(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(s.style.getPropertyValue('--dsh-thought-progress')))).toBeCloseTo(50,3);
+ await page.mouse.move(box.x+13,box.y+box.height/2);
+ const delta=await page.locator('.bre-effort-slider-thumb').evaluate((k,b)=>k.getBoundingClientRect().x-b.x,box);
+ expect(delta).toBeCloseTo(10,1);
+ await page.evaluate(()=>dispatchEvent(new Event('blur')));await page.mouse.up();
+ expect(await page.evaluate(()=>calls.length)).toBe(0);
+});
+
+test('MTL click paints immediately and retains the chosen stop through a slow commit',async({page})=>{
+ await page.evaluate(()=>{delay=300});
+ const r=await page.locator('.bre-effort-slider').boundingBox();
+ await page.mouse.move(r.x+r.width*.74,r.y+r.height/2);await page.mouse.down();
+ await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress','75%');
+ await expect(page.locator('.bre-effort-slider-head-value')).toHaveText('Level 3');
+ await page.mouse.up();
+ const values=await page.evaluate(async()=>{const values=[];for(let i=0;i<8;i++){await new Promise(requestAnimationFrame);values.push(parseFloat(document.querySelector('.bre-effort-slider').style.getPropertyValue('--dsh-thought-progress')))}return values});
+ expect(values.every(v=>v===75)).toBe(true);
+ await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');
+ expect(await page.evaluate(()=>calls.length)).toBe(1);
+});
+
+async function clickRatio(page,ratio){const b=await page.locator('.bre-effort-slider').boundingBox();await page.mouse.click(b.x+b.width*ratio,b.y+b.height/2)}
+
+test('MTL rapid busy clicks keep the latest intent and submit it after unlocking',async({page})=>{
+ await page.evaluate(()=>{delay=500});
+ await clickRatio(page,.25);
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-disabled','true');
+ await clickRatio(page,.75);await clickRatio(page,1);await clickRatio(page,0);
+ await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress','0%');
+ await expect(page.locator('.bre-effort-slider-head-value')).toHaveText('Level 0');
+ expect(await page.evaluate(()=>calls.length)).toBe(1);
+ const positions=await page.evaluate(async()=>{const r=[];for(let i=0;i<38;i++){await new Promise(requestAnimationFrame);r.push(parseFloat(document.querySelector('.bre-effort-slider').style.getPropertyValue('--dsh-thought-progress')))}return r});
+ expect(positions.every(v=>v===0)).toBe(true);
+ await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');
+ expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e1','e0']);
+});
+
+test('MTL remains draggable while saving and applies the latest released stop',async({page})=>{
+ await page.evaluate(()=>{delay=400});await clickRatio(page,.25);
+ await expect(page.locator('.bre-effort-slider')).toHaveAttribute('aria-disabled','true');
+ await drag(page,.1,.6);
+ expect(await page.locator('.bre-effort-slider').evaluate(s=>parseFloat(s.style.getPropertyValue('--dsh-thought-progress')))).toBeCloseTo(60,3);
+ await page.mouse.up();
+ await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress','75%');
+ await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');
+ expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e1','e3']);
+});
+
+test('MTL cancelling a new gesture preserves the previously queued click',async({page})=>{
+ await page.evaluate(()=>{delay=500});await clickRatio(page,.25);await clickRatio(page,.75);
+ await drag(page,.75,.95);await page.evaluate(()=>dispatchEvent(new Event('blur')));await page.mouse.up();
+ await expect(page.locator('.bre-effort-slider')).toHaveCSS('--dsh-thought-progress','75%');
+ await expect(page.locator('.bre-effort-slider')).not.toHaveAttribute('aria-disabled','true');
+ expect(await page.evaluate(()=>calls.map(c=>c.reasoningEffort))).toEqual(['e1','e3']);
 });
