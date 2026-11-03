@@ -12,7 +12,7 @@ async function install(page) {
 
 test('enhances the current host DOM without hiding model selection', async ({ page }) => {
   await install(page);
-  await expect(page.locator('#modern .zcode-thought-bubble')).toHaveCount(12);
+  await expect(page.locator('#modern .zcode-thought-bubble')).toHaveCount(20);
   await expect(page.locator('.bre-model-row')).toBeVisible();
   await expect(page.locator('#modern .bre-effort-knob')).toHaveCSS('width', '28px');
   await expect(page.locator('#modern input')).toHaveAttribute('aria-valuetext', '自定义最高');
@@ -26,7 +26,7 @@ test('maximum survives repeated scans and unrelated DOM changes', async ({ page 
   });
   await expect(page.locator('#legacy')).toHaveAttribute('data-dsh-thought-max', 'true');
   expect(await page.locator('#legacy .bre-effort-slider-thumb').evaluate(el => el.style.left)).toBe('100%');
-  await expect(page.locator('#legacy .zcode-thought-bubble')).toHaveCount(12);
+  await expect(page.locator('#legacy .zcode-thought-bubble')).toHaveCount(20);
 });
 
 test('style-only host updates refresh both current and legacy sliders', async ({ page }) => {
@@ -96,7 +96,7 @@ test('uninstall restores host DOM and allows reinstall', async ({ page }) => {
   expect(await page.locator('body').innerHTML()).toBe(before);
   await expect(page.locator('style[data-plugin="dsh-thought-slider"]')).toHaveCount(0);
   await page.evaluate(() => window.__DSH_THOUGHT_SLIDER__.install());
-  await expect(page.locator('#modern .zcode-thought-bubble')).toHaveCount(12);
+  await expect(page.locator('#modern .zcode-thought-bubble')).toHaveCount(20);
 });
 
 test('menus can be recreated and host children replaced without duplicate decoration', async ({ page }) => {
@@ -114,7 +114,7 @@ test('menus can be recreated and host children replaced without duplicate decora
     slider.replaceWith(replacement);
   });
   await expect(page.locator('#modern')).toHaveAttribute('data-dsh-thought-max', 'false');
-  await expect(page.locator('#modern .zcode-thought-bubble')).toHaveCount(12);
+  await expect(page.locator('#modern .zcode-thought-bubble')).toHaveCount(20);
 });
 
 test('uninstall cancels pending scans and preserves newer host state', async ({ page }) => {
@@ -133,6 +133,7 @@ test('uninstall cancels pending scans and preserves newer host state', async ({ 
 });
 
 test('observer reaches idle and repeated scans do not mutate the DOM', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await install(page);
   const writes = await page.evaluate(async () => {
     let writes = 0;
@@ -287,17 +288,17 @@ test('host can update and remove a slider in one render without observer errors'
   await expect(page.locator('.zcode-thought-caption')).toHaveCount(0);
 });
 
-test('particles vary independently and fade before finishing their right-to-left travel', async ({ page }) => {
+test('particles vary independently and only a minority fade before the left edge', async ({ page }) => {
   await install(page);
   const result = await page.locator('#modern .zcode-thought-bubbles').evaluate(container => {
-    const particles = [...container.children];
+    const particles = [...container.shadowRoot.querySelector('.zcode-thought-particles').children];
     const samples = particles.map(el => ({ top: parseFloat(el.style.top), duration: parseFloat(el.style.animationDuration),
       alpha: Number(el.style.getPropertyValue('--particle-alpha')), curve: el.style.animationTimingFunction }));
     const phases = [.25, .95].map(phase => particles.slice(0, 4).map(el => {
       for (const animation of el.getAnimations()) {
         animation.pause();
         const { delay, duration } = animation.effect.getTiming();
-        animation.currentTime = delay + duration * (2 + phase);
+        animation.currentTime = delay + duration * phase;
       }
       return { x: el.getBoundingClientRect().x, alpha: Number(getComputedStyle(el).opacity) };
     }));
@@ -307,13 +308,48 @@ test('particles vary independently and fade before finishing their right-to-left
   expect(new Set(result.samples.map(s => s.duration)).size).toBeGreaterThan(8);
   expect(new Set(result.samples.map(s => s.alpha)).size).toBeGreaterThan(8);
   for (const s of result.samples) {
-    expect(s.top).toBeGreaterThanOrEqual(12); expect(s.top).toBeLessThanOrEqual(88);
-    expect(s.duration).toBeGreaterThanOrEqual(2.6); expect(s.duration).toBeLessThanOrEqual(5.8);
-    expect(s.alpha).toBeGreaterThanOrEqual(.4); expect(s.alpha).toBeLessThanOrEqual(.68);
+    expect(s.top).toBeGreaterThanOrEqual(16); expect(s.top).toBeLessThanOrEqual(84);
+    expect(s.duration).toBeGreaterThanOrEqual(2.0); expect(s.duration).toBeLessThanOrEqual(3.6);
+    expect(s.alpha).toBeGreaterThanOrEqual(.4); expect(s.alpha).toBeLessThanOrEqual(.7);
   }
   for (let i = 0; i < 4; i++) {
     expect(result.phases[0][i].alpha).toBeGreaterThan(.35);
-    expect(result.phases[1][i].alpha).toBeLessThan(.01);
+    if(i===0) expect(result.phases[1][i].alpha).toBeLessThan(.01);
+    else expect(result.phases[1][i].alpha).toBeGreaterThan(.35);
     expect(result.phases[1][i].x).toBeLessThan(result.phases[0][i].x);
   }
+});
+
+test('finished particles are destroyed and replaced without triggering a full-page scan',async({page})=>{
+ await install(page);
+ const r=await page.evaluate(async()=>{
+  const host=document.querySelector('#modern .zcode-thought-bubbles');
+  const container=host.shadowRoot.querySelector('.zcode-thought-particles');
+  const old=container.firstElementChild;let scans=0,foreignWrites=0;
+  const foreign=new MutationObserver(r=>foreignWrites+=r.length);foreign.observe(document.body,{childList:true,subtree:true});
+  const original=document.querySelectorAll;
+  document.querySelectorAll=function(...args){if(args[0]==='.bre-effort-slider')scans++;return original.apply(this,args)};
+  old.dispatchEvent(new AnimationEvent('animationend',{bubbles:true,animationName:'zcode-thought-bubble-flow'}));
+  await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);
+  document.querySelectorAll=original;
+  foreign.disconnect();
+  return {removed:!old.isConnected,count:container.children.length,scans,foreignWrites,minority:container.querySelectorAll('[data-fading="true"]').length};
+ });
+ expect(r).toEqual({removed:true,count:20,scans:0,foreignWrites:0,minority:4});
+});
+
+test('enhancement bypasses a foreign 150ms observer wrapper without changing the global',async({page})=>{
+ await page.setContent(fixture);
+ await page.evaluate(()=>{const Native=MutationObserver;function Wrapped(callback){return new Native(records=>setTimeout(()=>callback(records),150))}Wrapped.prototype=Native.prototype;window.MutationObserver=Wrapped;window.foreignObserver=Wrapped;});
+ await page.addScriptTag({content:engineSource});
+ await page.evaluate(()=>window.__DSH_THOUGHT_SLIDER__.install());
+ const r=await page.evaluate(async()=>{
+  const clone=document.querySelector('#legacy').cloneNode(true);clone.id='immediate';clone.style.cssText='';
+  clone.removeAttribute('data-dsh-thought-slider');clone.removeAttribute('data-dsh-thought-max');
+  clone.querySelectorAll('.zcode-thought-fill,.zcode-thought-pointer').forEach(n=>n.remove());
+  document.body.append(clone);
+  await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);
+  return {enhanced:clone.hasAttribute('data-dsh-thought-slider'),globalPreserved:MutationObserver===foreignObserver};
+ });
+ expect(r).toEqual({enhanced:true,globalPreserved:true});
 });

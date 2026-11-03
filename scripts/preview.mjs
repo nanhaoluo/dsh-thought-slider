@@ -31,7 +31,7 @@ try {
   await page.setContent(html);
   await page.locator('.zcode-thought-fill').waitFor();
   // Freeze the decorative particles for repeatable preview images only.
-  await page.addStyleTag({ content: '.zcode-thought-bubble { animation-play-state: paused !important; }' });
+  await page.evaluate(() => { for(const host of document.querySelectorAll('.zcode-thought-bubbles')) { const style=document.createElement('style');style.textContent='.zcode-thought-bubble { animation-play-state: paused !important; }';host.shadowRoot?.appendChild(style); } });
   for (const dark of [false, true]) {
     await page.evaluate(dark => document.body.toggleAttribute('data-ds-dark-theme', dark), dark);
     await page.screenshot({ path: `dist/preview-${dark ? 'dark' : 'light'}.png` });
