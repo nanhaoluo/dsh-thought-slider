@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<style>
+  body { margin: 32px; background: #fff; color: #15171b; font: 14px system-ui; }
+  body[data-ds-dark-theme] { background: #191b20; color: #eee; }
+  .codexModelSelectMenu { width: min(312px, calc(100vw - 64px)); border: 1px solid #888; border-radius: 12px; overflow: hidden; }
+  .bre-slider-advanced { padding: 14px; }
+  .bre-effort { display: flex; align-items: center; height: 32px; width: 100%; }
+  .bre-effort-slider { --bre-progress: 50%; position: relative; width: 100%; height: 30px; flex: 1 1 auto; border-radius: 999px; isolation: isolate; }
+  .bre-effort-track { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; background: #302262; }
+  .bre-effort-track::after { content: ''; position: absolute; inset: 0; background: #3344aa33; }
+  .bre-effort-fx { position: absolute; z-index: 1; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; }
+  .bre-effort-knob { position: absolute; z-index: 4; top: 50%; left: clamp(14px, var(--bre-progress), calc(100% - 14px)); width: 28px; height: 28px; border: 1px solid white; border-radius: 50%; background: #fff; transform: translate(-50%, -50%); pointer-events: none; }
+  .bre-effort-input { position: absolute; z-index: 5; inset: -5px 0; width: 100%; height: calc(100% + 10px); margin: 0; opacity: 0; cursor: grab; touch-action: none; }
+  .bre-model-row { display: block; width: 100%; padding: 14px; }
+  .bre-effort-slider-fill { position: absolute; inset: 0; width: 100%; background: blue; }
+  .bre-effort-slider-thumb { position: absolute; top: 50%; width: 24px; height: 24px; background: white; transform: translate(-50%, -50%); }
+</style>
+<body>
+<!-- Current DOM contract and essential geometry from dsh-better-reasoning-effort 0.5.4:
+https://github.com/HaoyueQin/dsh-better-reasoning-effort/blob/2d68b65cc641cd85e95384c859a2bc3de23d9e08/src/client/ComposerSlider.tsx
+This fixture simulates host updates; it does not run a DSH backend. -->
+<div class="codexModelSelectMenu bre-model-menu-host" role="menu">
+  <div class="bre-slider-body"><div class="bre-slider-advanced"><div class="bre-effort">
+    <div id="modern" class="bre-effort-slider" style="--bre-progress: 100%">
+      <div class="bre-effort-track" aria-hidden="true"></div>
+      <div class="bre-effort-fx" aria-hidden="true"><canvas class="bre-effort-canvas"></canvas><span class="bre-effort-flare"></span></div>
+      <input class="bre-effort-input" type="range" min="0" max="4" step="1" value="4" aria-label="思考等级" aria-valuetext="自定义最高">
+      <span class="bre-effort-knob" aria-hidden="true"></span>
+    </div>
+  </div></div></div>
+  <button class="bre-model-row" role="menuitem">模型选择 · <span class="bre-model-row-effort">自定义最高</span></button>
+</div>
+<div class="bre-slider-advanced" style="width: 280px; margin-top: 32px">
+  <div class="bre-effort-slider-head"><span class="bre-effort-slider-head-label">思考等级</span><span class="bre-effort-slider-head-value">自定义最高</span></div>
+  <div id="legacy" class="bre-effort-slider" role="slider" tabindex="0">
+    <div class="bre-effort-slider-fill" style="clip-path: inset(0 0% 0 0)"></div>
+    <span class="bre-effort-slider-tick" style="left: 0%"></span>
+    <span class="bre-effort-slider-tick" style="left: 100%"></span>
+    <span class="bre-effort-slider-thumb" style="left: 100%"></span>
+  </div>
+</div>
+<script>
+  const slider = document.querySelector('#modern');
+  const input = slider.querySelector('input');
+  const effort = slider.closest('.bre-effort');
+  const names = ['关闭', '轻量', '均衡', '深入', '自定义最高'];
+  window.setHostProgress = value => {
+    input.value = String(value);
+    slider.style.setProperty('--bre-progress', value / 4 * 100 + '%');
+    input.setAttribute('aria-valuetext', names[value]);
+    document.querySelector('.bre-model-row-effort').textContent = names[value];
+  };
+  let dragging = false;
+  const fromPointer = event => {
+    const box = input.getBoundingClientRect();
+    setHostProgress(Math.round(Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * 4));
+  };
+  input.addEventListener('pointerdown', event => {
+    if (input.disabled) return;
+    event.preventDefault();
+    input.focus();
+    dragging = true;
+    effort.classList.add('is-dragging');
+    try { input.setPointerCapture(event.pointerId); } catch {}
+    fromPointer(event);
+  });
+  input.addEventListener('pointermove', event => { if (dragging) fromPointer(event); });
+  input.addEventListener('pointerup', event => {
+    if (!dragging) return;
+    fromPointer(event);
+    dragging = false;
+    effort.classList.remove('is-dragging');
+    if (input.hasPointerCapture(event.pointerId)) input.releasePointerCapture(event.pointerId);
+    window.committedValue = input.value;
+  });
+  input.addEventListener('input', () => setHostProgress(Number(input.value)));
+</script>
+</body>
+</html>
